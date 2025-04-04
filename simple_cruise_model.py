@@ -55,6 +55,10 @@ class CruiseCareerSequence:
         # Check for dropout at the start of the state
         if self._check_dropout():
             self.dropout = True
+            return  # Exit early if dropout occurs
+
+        # Calculate salary for this state immediately after entering (if not dropped out)
+        self.current_state_salary = self._calculate_state_salary()
 
     def _calculate_state_salary(self) -> float:
         """Calculate salary for the entire state based on current state"""
@@ -95,27 +99,44 @@ class CruiseCareerSequence:
         if self.dropout or self.completed:
             return self._get_state_summary()
 
-        # Calculate salary and payments for the current state
-        self.current_state_salary = self._calculate_state_salary()
-        
+        # Calculate payment for the current state
+        # Salary has already been calculated when entering the state
+        state_payment = 0.0
         if self.current_state_index < self.num_states:
             config = self.state_configs[self.current_state_index]
-            state_payment = self.current_state_salary * config.payment_fraction
-        else:
-            state_payment = 0
-            
+            if "Cruise" in config.name:  # Ensure payments for all cruise states
+                state_payment = self.current_state_salary * config.payment_fraction
+        
+        # Add payment to total
         self.total_payments += state_payment
         
         # Track history
         self.state_salaries.append(self.current_state_salary)
         self.state_payments.append(state_payment)
         
+        # Store the current state index before completing it
+        current_index = self.current_state_index
+        
         # Complete the current state and move to the next
         self.completed_states.append(self.current_state_index)
         self.current_state_index += 1
         self._enter_new_state()
-            
-        return self._get_state_summary()
+        
+        # Create a summary based on the state we just completed
+        return {
+            'state_index': current_index,
+            'state_name': self.state_configs[current_index].name if current_index < self.num_states else f"State {current_index}",
+            'state_duration': self.state_configs[current_index].duration_months if current_index < self.num_states else 0,
+            'current_state_salary': self.state_salaries[-1] if self.state_salaries else 0.0,
+            'state_payment': state_payment,
+            'payment_fraction': self.state_configs[current_index].payment_fraction if current_index < self.num_states else 0,
+            'total_training_costs': self.total_training_costs,
+            'total_payments': self.total_payments,
+            'net_cash_flow': self.total_payments - self.total_training_costs,
+            'dropout': self.dropout,
+            'completed': self.completed,
+            'completed_states': self.completed_states.copy()
+        }
 
     def _get_state_summary(self) -> Dict[str, Any]:
         """Return summary of current status"""
@@ -138,12 +159,15 @@ class CruiseCareerSequence:
             else 0
         )
         
+        # For payment, use the last recorded payment to ensure consistency
+        state_payment = self.state_payments[-1] if self.state_payments else (self.current_state_salary * current_payment_fraction)
+        
         return {
             'state_index': self.current_state_index,
             'state_name': current_state_name,
             'state_duration': state_duration,
             'current_state_salary': self.current_state_salary,
-            'state_payment': self.current_state_salary * current_payment_fraction,
+            'state_payment': state_payment,
             'payment_fraction': current_payment_fraction,
             'total_training_costs': self.total_training_costs,
             'total_payments': self.total_payments,
@@ -162,27 +186,27 @@ def create_default_state_configs(num_cruises: int = 3) -> List[StateConfig]:
     """
     # Start with the training states
     states = [
-        # Basic Training
+        # Training
         StateConfig(
             training_cost=2000,    # Initial training cost
-            dropout_rate=0.15,     # 15% dropout rate
-            base_salary=0,         # No salary during training
-            salary_increase_pct=0, # No increase during training
-            salary_variation_pct=0,
-            duration_months=3,     # 3 months
-            payment_fraction=0,    # No payments during training
-            name="Basic Training"
-        ),
-        # Advanced Training
-        StateConfig(
-            training_cost=2000,    # Advanced training cost
             dropout_rate=0.10,     # 10% dropout rate
             base_salary=0,         # No salary during training
             salary_increase_pct=0, # No increase during training
             salary_variation_pct=0,
             duration_months=3,     # 3 months
             payment_fraction=0,    # No payments during training
-            name="Advanced Training"
+            name="Training"
+        ),
+        # Transportation and placement
+        StateConfig(
+            training_cost=2000,    # Advanced training cost
+            dropout_rate=0.15,     # 15% dropout rate
+            base_salary=0,         # No salary during training
+            salary_increase_pct=0, # No increase during training
+            salary_variation_pct=0,
+            duration_months=3,     # 3 months
+            payment_fraction=0,    # No payments during training
+            name="Transportation and placement"
         ),
     ]
     
@@ -190,7 +214,7 @@ def create_default_state_configs(num_cruises: int = 3) -> List[StateConfig]:
     states.append(
         StateConfig(
             training_cost=0,       # No additional training cost
-            dropout_rate=0.15,     # 15% dropout rate
+            dropout_rate=0.03,     # 3% dropout rate
             base_salary=5000,      # First cruise period salary
             salary_increase_pct=0, # Initial salary, no increase
             salary_variation_pct=6,# ±6% variation (±$300 on $5000)
@@ -205,7 +229,7 @@ def create_default_state_configs(num_cruises: int = 3) -> List[StateConfig]:
         states.append(
             StateConfig(
                 training_cost=0,       # No additional training cost
-                dropout_rate=0.02,     # 2% dropout rate
+                dropout_rate=0.03,     # 3% dropout rate
                 base_salary=0,         # Base salary not used after first cruise
                 salary_increase_pct=10,# 10% increase from previous
                 salary_variation_pct=5,# ±5% variation in increase
@@ -567,7 +591,10 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         # Calculate average state payment based on salary times payment fraction
         if state_idx < num_states:
             config = state_configs[state_idx]
-            expected_payment = avg_state_salary * config.payment_fraction
+            if "Cruise" in config.name:
+                expected_payment = avg_state_salary * config.payment_fraction
+            else:
+                expected_payment = 0.0
         else:
             expected_payment = 0.0
         
@@ -600,6 +627,12 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     
     # Calculate key metrics
     roi = df['net_cash_flow'] / df['total_training_costs']
+    
+    # Print state total payments for debugging
+    print("\nDEBUG - Final State Total Payments:")
+    for i in range(num_states):
+        state_name = state_configs[i].name if i < len(state_configs) else f"State {i}"
+        print(f"State {i} ({state_name}): Total payments = ${state_total_payments.get(i, 0):.2f}")
     
     return {
         'completion_rate': df['completed'].mean() * 100,

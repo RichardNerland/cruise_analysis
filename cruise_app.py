@@ -191,7 +191,7 @@ app.layout = html.Div([
                             html.H4("Training Parameters", style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Include Advanced Training:"),
+                                html.Label("Include Transportation and Placement:"),
                                 dcc.RadioItems(
                                     id="include-advanced-training",
                                     options=[
@@ -204,11 +204,11 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Basic Training Cost ($):"),
+                                html.Label("Training Cost ($):"),
                                 dcc.Input(
                                     id="basic-training-cost",
                                     type="number",
-                                    value=2000,
+                                    value=1500,
                                     min=0,
                                     step=100,
                                     style={"width": "100%"}
@@ -216,19 +216,19 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Basic Training Dropout Rate (%):"),
+                                html.Label("Training Dropout Rate (%):"),
                                 dcc.Slider(
                                     id="basic-training-dropout-rate",
                                     min=0,
                                     max=50,
                                     step=1,
-                                    value=15,
+                                    value=10,
                                     marks={i: f'{i}%' for i in range(0, 51, 10)},
                                 )
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Basic Training Duration (months):"),
+                                html.Label("Training Duration (months):"),
                                 dcc.Input(
                                     id="basic-training-duration",
                                     type="number",
@@ -240,14 +240,14 @@ app.layout = html.Div([
                                 )
                             ], style={'marginBottom': '15px'}),
                             
-                            # Add the advanced training parameters directly in the layout instead of using conditional rendering
+                            # Add the transportation and placement parameters directly in the layout instead of using conditional rendering
                             html.Div([
                                 html.Div([
-                                    html.Label("Advanced Training Cost ($):"),
+                                    html.Label("Transportation and Placement Cost ($):"),
                                     dcc.Input(
                                         id="advanced-training-cost",
                                         type="number",
-                                        value=2000,
+                                        value=500,
                                         min=0,
                                         step=100,
                                         style={"width": "100%"}
@@ -255,19 +255,19 @@ app.layout = html.Div([
                                 ], style={'marginBottom': '15px'}),
                                 
                                 html.Div([
-                                    html.Label("Advanced Training Dropout Rate (%):"),
+                                    html.Label("Transportation and Placement Dropout Rate (%):"),
                                     dcc.Slider(
                                         id="advanced-training-dropout-rate",
                                         min=0,
                                         max=50,
                                         step=1,
-                                        value=12,
+                                        value=15,
                                         marks={i: f'{i}%' for i in range(0, 51, 10)},
                                     )
                                 ], style={'marginBottom': '15px'}),
                                 
                                 html.Div([
-                                    html.Label("Advanced Training Duration (months):"),
+                                    html.Label("Transportation and Placement Duration (months):"),
                                     dcc.Input(
                                         id="advanced-training-duration",
                                         type="number",
@@ -317,7 +317,7 @@ app.layout = html.Div([
                                     min=0,
                                     max=50,
                                     step=1,
-                                    value=15,
+                                    value=3,
                                     marks={i: f'{i}%' for i in range(0, 51, 10)},
                                 )
                             ], style={'marginBottom': '15px'}),
@@ -368,7 +368,7 @@ app.layout = html.Div([
                                     min=0,
                                     max=20,
                                     step=0.5,
-                                    value=2,
+                                    value=3,
                                     marks={i: f'{i}%' for i in range(0, 21, 5)},
                                 )
                             ], style={'marginBottom': '15px'}),
