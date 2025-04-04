@@ -1,1 +1,1 @@
-web: gunicorn -c gunicorn_config.py cruise_app:server 
+web: gunicorn -c gunicorn_config.py app:server 
