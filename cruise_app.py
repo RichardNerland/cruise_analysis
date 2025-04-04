@@ -7,6 +7,7 @@ import numpy as np
 import time
 import random
 import argparse
+import numpy_financial as npf
 
 # Import the cruise model
 from simple_cruise_model import (
@@ -14,14 +15,16 @@ from simple_cruise_model import (
     run_simulation_batch, 
     create_default_state_configs,
     calculate_summary_metrics, 
-    print_simulation_summary
+    print_simulation_summary,
+    calculate_monthly_irr
 )
 from simulation_config import (
     StateConfig, 
     SimulationConfig, 
     BASELINE_CONFIG, 
     OPTIMISTIC_CONFIG, 
-    PESSIMISTIC_CONFIG
+    PESSIMISTIC_CONFIG,
+    DEFAULT_CONFIG
 )
 
 # Initialize the Dash app
@@ -501,6 +504,9 @@ app.layout = html.Div([
                                 dcc.Tab(label='Overview', children=[
                                     html.Div(id="overview-content")
                                 ]),
+                                dcc.Tab(label='Monthly Cash Flow', children=[
+                                    html.Div(id="monthly-cashflow-content")
+                                ]),
                                 dcc.Tab(label='Scenario Comparison', children=[
                                     html.Div([
                                         html.H4("Compare Saved Scenarios", style={'marginBottom': '15px'}),
@@ -917,12 +923,54 @@ def run_simulation_callback(n_clicks, config_data):
     
     try:
         num_careers = config_data.get('num_students', 100)
-        results = run_simulation_batch(config)
+        state_configs = config.create_state_configs()
+        
+        print(f"\nStarting simulation with {num_careers} careers...")
+        
+        # Run multiple simulations until we find one that completes all states
+        # (or at least goes through more of them) for better cash flow visualization
+        print("Running individual simulations to find a good cash flow example...")
+        best_sim = None
+        max_states_completed = -1
+        
+        # Try up to 10 times to find a simulation that completes all states
+        for attempt in range(10):
+            test_sim = run_simulation(state_configs=state_configs, random_seed=random_seed + attempt)
+            states_completed = len(test_sim.get('completed_states', []))
+            is_dropout = test_sim.get('dropout', True)
+            
+            # Keep track of the simulation that completes the most states
+            if states_completed > max_states_completed:
+                max_states_completed = states_completed
+                best_sim = test_sim
+                print(f"Found better simulation with {states_completed} completed states, dropout: {is_dropout}")
+                
+                # If we found a simulation that completed all states, we can stop
+                if not is_dropout:
+                    print("Found simulation that completes all states!")
+                    break
+        
+        # Use our best simulation for state results
+        single_sim = best_sim if best_sim else run_simulation(state_configs=state_configs, random_seed=random_seed)
+        print(f"Using simulation with {len(single_sim.get('state_results', []))} states for cash flow")
+        
+        # Run the batch simulation for aggregate statistics
+        batch_results = run_simulation_batch(config)
+        
+        if not batch_results:
+            print("Error: Failed to generate batch simulation results")
+            return "Error: Failed to generate simulation results", None
+        
+        # Add the state results from the single simulation to the batch results
+        batch_results['state_results'] = single_sim['state_results']
+        
+        # Verify we have state results
+        print(f"State results count: {len(batch_results.get('state_results', []))}")
         
         # *** START: Pre-process state_metrics (Ensure this block is present and correct) ***
-        if 'state_metrics' in results and isinstance(results['state_metrics'], dict):
+        if 'state_metrics' in batch_results and isinstance(batch_results['state_metrics'], dict):
             cleaned_metrics = {}
-            for state_idx, metric_info in results['state_metrics'].items():
+            for state_idx, metric_info in batch_results['state_metrics'].items():
                 cleaned_state_data = {}
                 actual_name = f"State {state_idx}" # Default
                 
@@ -954,12 +1002,12 @@ def run_simulation_callback(n_clicks, config_data):
 
                 cleaned_metrics[str(state_idx)] = cleaned_state_data
                 
-            results['state_metrics'] = cleaned_metrics # Replace original with cleaned version
+            batch_results['state_metrics'] = cleaned_metrics # Replace original with cleaned version
         # *** END: Pre-process state_metrics ***
 
         # Serialization logic (more explicit for state_metrics)
         serializable_results = {}
-        for key, value in results.items():
+        for key, value in batch_results.items():
             if key == 'state_metrics':
                 # Explicitly build the serializable dict for state_metrics
                 temp_metrics_dict = {}
@@ -968,6 +1016,9 @@ def run_simulation_callback(n_clicks, config_data):
                         # state_data_dict should contain simple types after pre-processing
                         temp_metrics_dict[state_idx_str] = state_data_dict
                 serializable_results[key] = temp_metrics_dict # Assign the explicitly built dict
+            elif key == 'state_results':
+                # Preserve the state results array as-is
+                serializable_results[key] = value
             # *** START Handle New Aggregated State Data ***
             elif key in ['state_total_costs', 'state_total_payments', 'state_entry_counts']:
                  # These should already be dicts with string keys (state index as string) and numeric values
@@ -993,6 +1044,7 @@ def run_simulation_callback(n_clicks, config_data):
         
         serializable_results['config'] = config_data
         
+        print(f"Simulation complete with {len(serializable_results.get('state_results', []))} states in results")
         return f"Completed {num_careers} career simulations!", serializable_results
     
     except Exception as e:
@@ -1335,6 +1387,227 @@ def update_overview_content(results):
                 ], style={'marginBottom': '15px'}),
                 state_metrics_table
             ])
+        ])
+    ])
+
+# Add the callback after other callbacks
+@app.callback(
+    Output("monthly-cashflow-content", "children"),
+    [Input("simulation-results-store", "data")]
+)
+def update_monthly_cashflow_content(results):
+    if not results:
+        return "Run a simulation to see results"
+
+    # Debug information
+    print("\nDEBUG - Monthly Cash Flow Tab:")
+    print(f"Results keys: {results.keys() if results else 'None'}")
+    
+    # Check if there are state results directly or within all_results
+    if 'state_results' in results:
+        all_results = results.get('state_results', [])
+        print(f"Found state_results directly. Length: {len(all_results)}")
+    else:
+        # Try to get state results from the first simulation result if results is a list
+        print("No direct state_results found. Checking for first simulation result.")
+        if isinstance(results.get('all_results'), list) and len(results.get('all_results', [])) > 0:
+            first_sim = results['all_results'][0]
+            all_results = first_sim.get('state_results', [])
+            print(f"Found state_results in first simulation. Length: {len(all_results)}")
+        else:
+            print("No state_results found in any location.")
+            all_results = []
+
+    if not all_results:
+        return html.Div([
+            html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
+            html.Div([
+                html.P("No state results available. Try running a simulation first.", 
+                       style={'textAlign': 'center', 'color': 'red', 'fontWeight': 'bold'})
+            ])
+        ])
+
+    # Print the structure of the first state result for debugging
+    if all_results and len(all_results) > 0:
+        print(f"First state result keys: {all_results[0].keys() if isinstance(all_results[0], dict) else 'Not a dict'}")
+        print(f"First state result: {all_results[0]}")
+
+    # Create a list to store monthly cash flows
+    monthly_cash_flows = []
+    cumulative_cash_flows = []
+    month_labels = []
+    current_month = 0
+
+    # Process each state
+    for state_idx, state_result in enumerate(all_results):
+        if not isinstance(state_result, dict):
+            print(f"Skipping non-dict state result at index {state_idx}: {state_result}")
+            continue
+            
+        state_name = state_result.get('state_name', f'State {state_idx}')
+        state_duration = state_result.get('state_duration', 0)
+        state_payment = state_result.get('state_payment', 0)
+
+        print(f"Processing state {state_idx}: {state_name}, duration: {state_duration}, payment: {state_payment}")
+
+        # Skip states with no duration
+        if state_duration <= 0:
+            print(f"Skipping state with no duration: {state_name}")
+            continue
+
+        # For training states, add full cost as upfront payment in first month
+        if "Training" in state_name or "Transportation and placement" in state_name:
+            training_cost = state_result.get('total_training_costs', 0) - (
+                all_results[state_idx-1].get('total_training_costs', 0) if state_idx > 0 else 0
+            )
+
+            print(f"Training state {state_name}, cost: {training_cost}")
+
+            if training_cost > 0:
+                # Add training cost as negative cash flow at start of state
+                monthly_cash_flows.append(-training_cost)
+                month_labels.append(f"Month {current_month + 1} ({state_name})")
+                current_month += 1
+
+                # Add 0 cash flow for remaining months of training
+                for i in range(state_duration - 1):
+                    monthly_cash_flows.append(0)
+                    month_labels.append(f"Month {current_month + 1} ({state_name})")
+                    current_month += 1
+        else:
+            # For cruise states, distribute payments evenly across months
+            monthly_payment = state_payment / state_duration if state_duration > 0 else 0
+            print(f"Cruise state {state_name}, monthly payment: {monthly_payment}, total: {monthly_payment * state_duration}")
+            
+            for i in range(state_duration):
+                monthly_cash_flows.append(monthly_payment)
+                month_labels.append(f"Month {current_month + 1} ({state_name})")
+                current_month += 1
+
+    # Calculate cumulative cash flows
+    running_total = 0
+    for cf in monthly_cash_flows:
+        running_total += cf
+        cumulative_cash_flows.append(running_total)
+
+    print(f"Generated {len(monthly_cash_flows)} monthly cash flows")
+
+    # If no cash flows were generated, show an error
+    if not monthly_cash_flows:
+        return html.Div([
+            html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
+            html.Div([
+                html.P("Could not generate cash flows from state results. Try running a simulation again.", 
+                       style={'textAlign': 'center', 'color': 'red', 'fontWeight': 'bold'})
+            ])
+        ])
+
+    # Calculate IRR
+    irr = None
+    try:
+        if len(monthly_cash_flows) > 0:
+            cash_flow_array = np.array(monthly_cash_flows)
+            if any(cf > 0 for cf in cash_flow_array) and any(cf < 0 for cf in cash_flow_array):
+                monthly_irr = npf.irr(cash_flow_array)
+                irr = ((1 + monthly_irr) ** 12 - 1) * 100  # Convert to annual percentage
+    except Exception as e:
+        print(f"IRR calculation error: {str(e)}")
+
+    # Create cash flow visualization
+    cash_flow_fig = go.Figure()
+    cash_flow_fig.add_trace(go.Bar(
+        x=month_labels,
+        y=monthly_cash_flows,
+        name="Monthly Cash Flow",
+        marker_color=['red' if cf < 0 else 'green' for cf in monthly_cash_flows]
+    ))
+    cash_flow_fig.add_trace(go.Scatter(
+        x=month_labels,
+        y=cumulative_cash_flows,
+        name="Cumulative Cash Flow",
+        line=dict(color='blue', width=2),
+        yaxis='y2'
+    ))
+    cash_flow_fig.update_layout(
+        title='Monthly and Cumulative Cash Flows',
+        xaxis_title='Month',
+        yaxis_title='Monthly Cash Flow ($)',
+        yaxis2=dict(
+            title='Cumulative Cash Flow ($)',
+            overlaying='y',
+            side='right'
+        ),
+        template='plotly_white',
+        showlegend=True,
+        height=600,
+        margin=dict(b=100),
+        xaxis=dict(
+            tickangle=45,
+            showticklabels=True
+        )
+    )
+
+    # Create the monthly cash flow table
+    monthly_cashflow_table = dash_table.DataTable(
+        id='monthly-cashflow-table',
+        data=pd.DataFrame({
+            'Month': month_labels,
+            'Cash Flow': monthly_cash_flows,
+            'Cumulative Cash Flow': cumulative_cash_flows
+        }).to_dict('records'),
+        columns=[
+            {"name": "Month", "id": "Month"},
+            {"name": "Cash Flow", "id": "Cash Flow", "type": "numeric", "format": {"specifier": "$,.2f"}},
+            {"name": "Cumulative Cash Flow", "id": "Cumulative Cash Flow", "type": "numeric", "format": {"specifier": "$,.2f"}}
+        ],
+        style_cell={'textAlign': 'center', 'padding': '10px'},
+        style_header={
+            'backgroundColor': 'rgb(230, 230, 230)',
+            'fontWeight': 'bold'
+        },
+        style_data_conditional=[
+            {
+                'if': {'row_index': 'odd'},
+                'backgroundColor': 'rgb(248, 248, 248)'
+            },
+            {
+                'if': {'filter_query': '{Cash Flow} < 0'},
+                'color': 'red'
+            },
+            {
+                'if': {'filter_query': '{Cash Flow} > 0'},
+                'color': 'green'
+            }
+        ],
+        page_size=10,
+        style_table={'overflowX': 'auto'}
+    )
+
+    return html.Div([
+        html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
+        
+        # IRR Summary
+        html.Div([
+            html.H5("Internal Rate of Return (IRR)", style={'textAlign': 'center', 'marginBottom': '10px'}),
+            html.Div([
+                html.P("Annual IRR:", style={'fontWeight': 'bold', 'display': 'inline-block', 'marginRight': '10px'}),
+                html.P(f"{irr:.1f}%" if irr is not None else "N/A",
+                      style={'display': 'inline-block', 'color': 'green' if irr and irr > 0 else 'red'})
+            ], style={'textAlign': 'center', 'marginBottom': '20px'})
+        ], style={'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px', 'marginBottom': '20px'}),
+        
+        # Cash Flow Chart
+        html.Div([
+            html.H5("Cash Flow Visualization", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            dcc.Graph(figure=cash_flow_fig, style={'marginBottom': '30px'})
+        ]),
+        
+        # Monthly Cash Flow Table
+        html.Div([
+            html.H5("Monthly Cash Flow Details", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            html.P("This table shows the detailed monthly cash flows and cumulative totals:",
+                  style={'marginBottom': '15px'}),
+            monthly_cashflow_table
         ])
     ])
 
