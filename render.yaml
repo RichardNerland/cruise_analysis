@@ -3,7 +3,7 @@ services:
     name: cruise-analysis
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -c gunicorn_config.py wsgi:server
+    startCommand: gunicorn -c gunicorn_config.py app:server
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
