@@ -8,6 +8,7 @@ import time
 import random
 import argparse
 import numpy_financial as npf
+import os
 
 # Import the cruise model
 from simple_cruise_model import (
@@ -27,9 +28,24 @@ from simulation_config import (
     DEFAULT_CONFIG
 )
 
-# Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
+# Initialize the Dash app with production config
+app = dash.Dash(
+    __name__,
+    suppress_callback_exceptions=True,
+    update_title=None,
+    routes_pathname_prefix='/',
+    requests_pathname_prefix='/',
+    meta_tags=[
+        {"name": "viewport", "content": "width=device-width, initial-scale=1"}
+    ]
+)
+
+# Set server timeout (optional, adjust as needed)
 server = app.server  # Expose the server variable for production
+server.config.update({
+    'SEND_FILE_MAX_AGE_DEFAULT': 0,
+    'TEMPLATES_AUTO_RELOAD': True
+})
 
 # Enable the app to be embedded in an iframe
 app.index_string = '''
@@ -176,7 +192,7 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Training Dropout Rate (%):"),
+                                html.Label("Training Failure Rate (%):"),
                                 dcc.Slider(
                                     id="basic-training-dropout-rate",
                                     min=0,
@@ -199,6 +215,49 @@ app.layout = html.Div([
                                     style={"width": "100%"}
                                 )
                             ], style={'marginBottom': '15px'}),
+                            
+                            # New Offer Stage Parameters
+                            html.Div([
+                                html.H5("Offer Stage Parameters", style={'marginBottom': '10px', 'color': '#ff9800'}),
+                                
+                                html.Div([
+                                    html.Label("Include Offer Stage:"),
+                                    dcc.RadioItems(
+                                        id="include-offer-stage",
+                                        options=[
+                                            {'label': 'Yes', 'value': True},
+                                            {'label': 'No', 'value': False}
+                                        ],
+                                        value=True,
+                                        inline=True
+                                    )
+                                ], style={'marginBottom': '15px'}),
+                                
+                                html.Div([
+                                    html.Label("No Offer Rate (%):"),
+                                    dcc.Slider(
+                                        id="no-offer-rate",
+                                        min=0,
+                                        max=50,
+                                        step=1,
+                                        value=30,
+                                        marks={i: f'{i}%' for i in range(0, 51, 10)},
+                                    )
+                                ], style={'marginBottom': '15px'}),
+                                
+                                html.Div([
+                                    html.Label("Offer Stage Duration (months):"),
+                                    dcc.Input(
+                                        id="offer-stage-duration",
+                                        type="number",
+                                        value=1,
+                                        min=1,
+                                        max=12,
+                                        step=1,
+                                        style={"width": "100%"}
+                                    )
+                                ], style={'marginBottom': '15px'})
+                            ], style={'marginBottom': '15px', 'backgroundColor': '#fff3e0', 'padding': '15px', 'borderRadius': '5px'}),
                             
                             # Add the transportation and placement parameters directly in the layout instead of using conditional rendering
                             html.Div([
@@ -238,32 +297,104 @@ app.layout = html.Div([
                                         style={"width": "100%"}
                                     )
                                 ], style={'marginBottom': '15px'})
-                            ], id="advanced-training-container", style={'marginBottom': '15px', 'backgroundColor': '#e6f7ff', 'padding': '15px', 'borderRadius': '5px'})
+                            ], id="advanced-training-container", style={'marginBottom': '15px', 'backgroundColor': '#e6f7ff', 'padding': '15px', 'borderRadius': '5px'}),
+                            
+                            # New Early Termination Stage Parameters
+                            html.Div([
+                                html.H5("Early Termination Parameters", style={'marginBottom': '10px', 'color': '#f44336'}),
+                                
+                                html.Div([
+                                    html.Label("Include Early Termination Stage:"),
+                                    dcc.RadioItems(
+                                        id="include-early-termination",
+                                        options=[
+                                            {'label': 'Yes', 'value': True},
+                                            {'label': 'No', 'value': False}
+                                        ],
+                                        value=True,
+                                        inline=True
+                                    )
+                                ], style={'marginBottom': '15px'}),
+                                
+                                html.Div([
+                                    html.Label("Early Termination Rate (%):"),
+                                    dcc.Slider(
+                                        id="early-termination-rate",
+                                        min=0,
+                                        max=50,
+                                        step=1,
+                                        value=10,
+                                        marks={i: f'{i}%' for i in range(0, 51, 10)},
+                                    )
+                                ], style={'marginBottom': '15px'}),
+                                
+                                html.Div([
+                                    html.Label("Early Termination Stage Duration (months):"),
+                                    dcc.Input(
+                                        id="early-termination-duration",
+                                        type="number",
+                                        value=1,
+                                        min=1,
+                                        max=12,
+                                        step=1,
+                                        style={"width": "100%"}
+                                    )
+                                ], style={'marginBottom': '15px'})
+                            ], style={'marginBottom': '15px', 'backgroundColor': '#ffebee', 'padding': '15px', 'borderRadius': '5px'})
                         ], style={'marginBottom': '20px', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'}),
                         
                         # Cruise parameters
                         html.Div([
-                            html.H4("Cruise Parameters", style={'marginBottom': '15px'}),
+                            html.H4("Provider Settings", style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Number of Additional Cruises:"),
+                                html.Label("Disney Allocation (%):"),
+                                dcc.Slider(
+                                    id="disney-allocation-pct",
+                                    min=0,
+                                    max=100,
+                                    step=5,
+                                    value=30,
+                                    marks={i: f'{i}%' for i in range(0, 101, 20)},
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Costa Allocation (%):"),
+                                dcc.Slider(
+                                    id="costa-allocation-pct",
+                                    min=0,
+                                    max=100,
+                                    step=5,
+                                    value=70,
+                                    marks={i: f'{i}%' for i in range(0, 101, 20)},
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Number of Cruises:"),
                                 dcc.Input(
-                                    id="num-additional-cruises",
+                                    id="num-cruises",
                                     type="number",
                                     value=3,
-                                    min=0,
-                                    max=10,
+                                    min=1,
+                                    max=5,
                                     step=1,
                                     style={"width": "100%"}
                                 )
                             ], style={'marginBottom': '15px'}),
                             
+                            html.Hr(),
+                            
+                            # Disney Cruise Parameters
+                            html.H5("Disney Cruise Parameters", style={'marginBottom': '15px', 'color': '#2196F3'}),
+                            
                             html.Div([
-                                html.Label("First Cruise Base Salary ($):"),
+                                html.Label("Disney First Cruise Salary ($):"),
                                 dcc.Input(
-                                    id="first-cruise-base-salary",
+                                    id="disney-first-cruise-salary",
                                     type="number",
-                                    value=5000,
+                                    value=5100,
                                     min=0,
                                     step=100,
                                     style={"width": "100%"}
@@ -271,33 +402,33 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("First Cruise Dropout Rate (%):"),
-                                dcc.Slider(
-                                    id="first-cruise-dropout-rate",
-                                    min=0,
-                                    max=50,
-                                    step=1,
-                                    value=3,
-                                    marks={i: f'{i}%' for i in range(0, 51, 10)},
-                                )
-                            ], style={'marginBottom': '15px'}),
-                            
-                            html.Div([
-                                html.Label("First Cruise Salary Variation (%):"),
-                                dcc.Slider(
-                                    id="first-cruise-salary-variation",
-                                    min=0,
-                                    max=20,
-                                    step=0.5,
-                                    value=6,
-                                    marks={i: f'{i}%' for i in range(0, 21, 5)},
-                                )
-                            ], style={'marginBottom': '15px'}),
-                            
-                            html.Div([
-                                html.Label("First Cruise Duration (months):"),
+                                html.Label("Disney Second Cruise Salary ($):"),
                                 dcc.Input(
-                                    id="first-cruise-duration",
+                                    id="disney-second-cruise-salary",
+                                    type="number",
+                                    value=5400,
+                                    min=0,
+                                    step=100,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Disney Third Cruise Salary ($):"),
+                                dcc.Input(
+                                    id="disney-third-cruise-salary",
+                                    type="number",
+                                    value=18000,
+                                    min=0,
+                                    step=100,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Disney Cruise Duration (months):"),
+                                dcc.Input(
+                                    id="disney-cruise-duration",
                                     type="number",
                                     value=6,
                                     min=1,
@@ -308,9 +439,33 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("First Cruise Payment Fraction (%):"),
+                                html.Label("Disney Cruise Dropout Rate (%):"),
                                 dcc.Slider(
-                                    id="first-cruise-payment-fraction",
+                                    id="disney-cruise-dropout-rate",
+                                    min=0,
+                                    max=20,
+                                    step=0.5,
+                                    value=3,
+                                    marks={i: f'{i}%' for i in range(0, 21, 5)},
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Disney Cruise Salary Variation (%):"),
+                                dcc.Slider(
+                                    id="disney-cruise-salary-variation",
+                                    min=0,
+                                    max=20,
+                                    step=0.5,
+                                    value=5,
+                                    marks={i: f'{i}%' for i in range(0, 21, 5)},
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Disney Cruise Payment Fraction (%):"),
+                                dcc.Slider(
+                                    id="disney-cruise-payment-fraction",
                                     min=0,
                                     max=30,
                                     step=0.5,
@@ -321,10 +476,62 @@ app.layout = html.Div([
                             
                             html.Hr(),
                             
+                            # Costa Cruise Parameters
+                            html.H5("Costa Cruise Parameters", style={'marginBottom': '15px', 'color': '#4CAF50'}),
+                            
                             html.Div([
-                                html.Label("Subsequent Cruise Dropout Rate (%):"),
+                                html.Label("Costa First Cruise Salary ($):"),
+                                dcc.Input(
+                                    id="costa-first-cruise-salary",
+                                    type="number",
+                                    value=5100,
+                                    min=0,
+                                    step=100,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Costa Second Cruise Salary ($):"),
+                                dcc.Input(
+                                    id="costa-second-cruise-salary",
+                                    type="number",
+                                    value=5850,
+                                    min=0,
+                                    step=100,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Costa Third Cruise Salary ($):"),
+                                dcc.Input(
+                                    id="costa-third-cruise-salary",
+                                    type="number",
+                                    value=9000,
+                                    min=0,
+                                    step=100,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Costa Cruise Duration (months):"),
+                                dcc.Input(
+                                    id="costa-cruise-duration",
+                                    type="number",
+                                    value=7,
+                                    min=1,
+                                    max=24,
+                                    step=1,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Costa Cruise Dropout Rate (%):"),
                                 dcc.Slider(
-                                    id="subsequent-cruise-dropout-rate",
+                                    id="costa-cruise-dropout-rate",
                                     min=0,
                                     max=20,
                                     step=0.5,
@@ -334,21 +541,9 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Subsequent Cruise Salary Increase (%):"),
+                                html.Label("Costa Cruise Salary Variation (%):"),
                                 dcc.Slider(
-                                    id="subsequent-cruise-salary-increase",
-                                    min=0,
-                                    max=25,
-                                    step=0.5,
-                                    value=10,
-                                    marks={i: f'{i}%' for i in range(0, 26, 5)},
-                                )
-                            ], style={'marginBottom': '15px'}),
-                            
-                            html.Div([
-                                html.Label("Subsequent Cruise Salary Variation (%):"),
-                                dcc.Slider(
-                                    id="subsequent-cruise-salary-variation",
+                                    id="costa-cruise-salary-variation",
                                     min=0,
                                     max=20,
                                     step=0.5,
@@ -358,22 +553,9 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                             
                             html.Div([
-                                html.Label("Subsequent Cruise Duration (months):"),
-                                dcc.Input(
-                                    id="subsequent-cruise-duration",
-                                    type="number",
-                                    value=6,
-                                    min=1,
-                                    max=24,
-                                    step=1,
-                                    style={"width": "100%"}
-                                )
-                            ], style={'marginBottom': '15px'}),
-                            
-                            html.Div([
-                                html.Label("Subsequent Cruise Payment Fraction (%):"),
+                                html.Label("Costa Cruise Payment Fraction (%):"),
                                 dcc.Slider(
-                                    id="subsequent-cruise-payment-fraction",
+                                    id="costa-cruise-payment-fraction",
                                     min=0,
                                     max=30,
                                     step=0.5,
@@ -613,6 +795,30 @@ def toggle_advanced_training_visibility(include_advanced):
     else:
         return {'display': 'none'}
 
+# Callback to show/hide offer stage container
+@app.callback(
+    [Output("no-offer-rate", "disabled"),
+     Output("offer-stage-duration", "disabled")],
+    [Input("include-offer-stage", "value")]
+)
+def toggle_offer_stage_controls(include_offer):
+    if include_offer:
+        return False, False
+    else:
+        return True, True
+
+# Callback to show/hide early termination container
+@app.callback(
+    [Output("early-termination-rate", "disabled"),
+     Output("early-termination-duration", "disabled")],
+    [Input("include-early-termination", "value")]
+)
+def toggle_early_termination_controls(include_early_termination):
+    if include_early_termination:
+        return False, False
+    else:
+        return True, True
+
 # Callback to update all parameters when a preset is selected
 @app.callback(
     [
@@ -621,28 +827,49 @@ def toggle_advanced_training_visibility(include_advanced):
         Output("basic-training-cost", "value"),
         Output("basic-training-dropout-rate", "value"),
         Output("basic-training-duration", "value"),
+        
+        # Offer stage parameters
+        Output("include-offer-stage", "value"),
+        Output("no-offer-rate", "value"),
+        Output("offer-stage-duration", "value"),
+        
+        # Transportation and placement parameters
         Output("advanced-training-cost", "value"),
         Output("advanced-training-dropout-rate", "value"),
         Output("advanced-training-duration", "value"),
         
-        # Cruise parameters
-        Output("num-additional-cruises", "value"),
-        Output("first-cruise-base-salary", "value"),
-        Output("first-cruise-dropout-rate", "value"),
-        Output("first-cruise-salary-variation", "value"),
-        Output("first-cruise-duration", "value"),
-        Output("first-cruise-payment-fraction", "value"),
+        # Early termination parameters
+        Output("include-early-termination", "value"),
+        Output("early-termination-rate", "value"),
+        Output("early-termination-duration", "value"),
+        
+        # Provider parameters
+        Output("disney-allocation-pct", "value"),
+        Output("costa-allocation-pct", "value"),
+        Output("num-cruises", "value"),
+        
+        # Disney parameters
+        Output("disney-first-cruise-salary", "value"),
+        Output("disney-second-cruise-salary", "value"),
+        Output("disney-third-cruise-salary", "value"),
+        Output("disney-cruise-duration", "value"),
+        Output("disney-cruise-dropout-rate", "value"),
+        Output("disney-cruise-salary-variation", "value"),
+        Output("disney-cruise-payment-fraction", "value"),
+        
+        # Costa parameters
+        Output("costa-first-cruise-salary", "value"),
+        Output("costa-second-cruise-salary", "value"),
+        Output("costa-third-cruise-salary", "value"),
+        Output("costa-cruise-duration", "value"),
+        Output("costa-cruise-dropout-rate", "value"),
+        Output("costa-cruise-salary-variation", "value"),
+        Output("costa-cruise-payment-fraction", "value"),
         
         # Break parameters
         Output("include-breaks", "value"),
         Output("break-duration", "value"),
         Output("break-dropout-rate", "value"),
-        
-        Output("subsequent-cruise-dropout-rate", "value"),
-        Output("subsequent-cruise-salary-increase", "value"),
-        Output("subsequent-cruise-salary-variation", "value"),
-        Output("subsequent-cruise-duration", "value"),
-        Output("subsequent-cruise-payment-fraction", "value"),
     ],
     [Input("preset-scenario", "value")]
 )
@@ -659,111 +886,229 @@ def update_from_preset(preset_name):
         config.basic_training_cost,
         config.basic_training_dropout_rate * 100,
         config.basic_training_duration,
+        
+        # Offer stage parameters
+        config.include_offer_stage,
+        config.no_offer_rate * 100,
+        config.offer_stage_duration,
+        
+        # Transportation and placement parameters
         config.advanced_training_cost,
         config.advanced_training_dropout_rate * 100,
         config.advanced_training_duration,
-        config.num_additional_cruises,
-        config.first_cruise_base_salary,
-        config.first_cruise_dropout_rate * 100,
-        config.first_cruise_salary_variation,
-        config.first_cruise_duration,
-        config.first_cruise_payment_fraction * 100,
+        
+        # Early termination parameters
+        config.include_early_termination,
+        config.early_termination_rate * 100,
+        config.early_termination_duration,
+        
+        # Provider settings
+        config.disney_allocation_pct,
+        config.costa_allocation_pct,
+        config.num_cruises,
+        
+        # Disney cruise settings
+        config.disney_first_cruise_salary,
+        config.disney_second_cruise_salary,
+        config.disney_third_cruise_salary,
+        config.disney_cruise_duration,
+        config.disney_cruise_dropout_rate * 100,
+        config.disney_cruise_salary_variation,
+        config.disney_cruise_payment_fraction * 100,
+        
+        # Costa cruise settings
+        config.costa_first_cruise_salary,
+        config.costa_second_cruise_salary,
+        config.costa_third_cruise_salary,
+        config.costa_cruise_duration,
+        config.costa_cruise_dropout_rate * 100,
+        config.costa_cruise_salary_variation,
+        config.costa_cruise_payment_fraction * 100,
+        
+        # Break settings
         config.include_breaks,
         config.break_duration,
-        config.break_dropout_rate * 100,
-        config.subsequent_cruise_dropout_rate * 100,
-        config.subsequent_cruise_salary_increase,
-        config.subsequent_cruise_salary_variation,
-        config.subsequent_cruise_duration,
-        config.subsequent_cruise_payment_fraction * 100
+        config.break_dropout_rate * 100
     )
 
 # Callback to create a simulation configuration and store it
 @app.callback(
     Output("simulation-config-store", "data"),
     [
+        # Training parameters
         Input("include-advanced-training", "value"),
         Input("basic-training-cost", "value"),
         Input("basic-training-dropout-rate", "value"),
         Input("basic-training-duration", "value"),
+        
+        # Offer stage parameters
+        Input("include-offer-stage", "value"),
+        Input("no-offer-rate", "value"),
+        Input("offer-stage-duration", "value"),
+        
+        # Transportation and placement parameters
         Input("advanced-training-cost", "value"),
         Input("advanced-training-dropout-rate", "value"),
         Input("advanced-training-duration", "value"),
-        Input("num-additional-cruises", "value"),
-        Input("first-cruise-base-salary", "value"),
-        Input("first-cruise-dropout-rate", "value"),
-        Input("first-cruise-salary-variation", "value"),
-        Input("first-cruise-duration", "value"),
-        Input("first-cruise-payment-fraction", "value"),
+        
+        # Early termination parameters
+        Input("include-early-termination", "value"),
+        Input("early-termination-rate", "value"),
+        Input("early-termination-duration", "value"),
+        
+        # Provider settings
+        Input("disney-allocation-pct", "value"),
+        Input("costa-allocation-pct", "value"),
+        Input("num-cruises", "value"),
+        
+        # Disney cruise settings
+        Input("disney-first-cruise-salary", "value"),
+        Input("disney-second-cruise-salary", "value"),
+        Input("disney-third-cruise-salary", "value"),
+        Input("disney-cruise-duration", "value"),
+        Input("disney-cruise-dropout-rate", "value"),
+        Input("disney-cruise-salary-variation", "value"),
+        Input("disney-cruise-payment-fraction", "value"),
+        
+        # Costa cruise settings
+        Input("costa-first-cruise-salary", "value"),
+        Input("costa-second-cruise-salary", "value"),
+        Input("costa-third-cruise-salary", "value"),
+        Input("costa-cruise-duration", "value"),
+        Input("costa-cruise-dropout-rate", "value"),
+        Input("costa-cruise-salary-variation", "value"),
+        Input("costa-cruise-payment-fraction", "value"),
+        
+        # Break settings
         Input("include-breaks", "value"),
         Input("break-duration", "value"),
         Input("break-dropout-rate", "value"),
-        Input("subsequent-cruise-dropout-rate", "value"),
-        Input("subsequent-cruise-salary-increase", "value"),
-        Input("subsequent-cruise-salary-variation", "value"),
-        Input("subsequent-cruise-duration", "value"),
-        Input("subsequent-cruise-payment-fraction", "value"),
+        
+        # Simulation settings
         Input("num-students", "value"),
         Input("num-sims", "value")
     ]
 )
 def update_simulation_config(
+    # Training parameters
     include_advanced_training, 
     basic_training_cost, 
     basic_training_dropout_rate,
     basic_training_duration,
+    
+    # Offer stage parameters
+    include_offer_stage,
+    no_offer_rate,
+    offer_stage_duration,
+    
+    # Transportation and placement parameters
     advanced_training_cost,
     advanced_training_dropout_rate,
     advanced_training_duration,
-    num_additional_cruises,
-    first_cruise_base_salary,
-    first_cruise_dropout_rate,
-    first_cruise_salary_variation,
-    first_cruise_duration,
-    first_cruise_payment_fraction,
+    
+    # Early termination parameters
+    include_early_termination,
+    early_termination_rate,
+    early_termination_duration,
+    
+    # Provider settings
+    disney_allocation_pct,
+    costa_allocation_pct,
+    num_cruises,
+    
+    # Disney cruise settings
+    disney_first_cruise_salary,
+    disney_second_cruise_salary,
+    disney_third_cruise_salary,
+    disney_cruise_duration,
+    disney_cruise_dropout_rate,
+    disney_cruise_salary_variation,
+    disney_cruise_payment_fraction,
+    
+    # Costa cruise settings
+    costa_first_cruise_salary,
+    costa_second_cruise_salary,
+    costa_third_cruise_salary,
+    costa_cruise_duration,
+    costa_cruise_dropout_rate,
+    costa_cruise_salary_variation,
+    costa_cruise_payment_fraction,
+    
+    # Break settings
     include_breaks,
     break_duration,
     break_dropout_rate,
-    subsequent_cruise_dropout_rate,
-    subsequent_cruise_salary_increase,
-    subsequent_cruise_salary_variation,
-    subsequent_cruise_duration,
-    subsequent_cruise_payment_fraction,
+    
+    # Simulation settings
     num_students,
     num_sims
 ):
     # Convert percentage inputs to decimal values
-    basic_training_dropout_rate = basic_training_dropout_rate / 100 if basic_training_dropout_rate else 0.15
-    advanced_training_dropout_rate = advanced_training_dropout_rate / 100 if advanced_training_dropout_rate else 0.12
-    first_cruise_dropout_rate = first_cruise_dropout_rate / 100 if first_cruise_dropout_rate else 0.15
-    first_cruise_payment_fraction = first_cruise_payment_fraction / 100 if first_cruise_payment_fraction else 0.14
-    break_dropout_rate = break_dropout_rate / 100 if break_dropout_rate else 0.0
-    subsequent_cruise_dropout_rate = subsequent_cruise_dropout_rate / 100 if subsequent_cruise_dropout_rate else 0.02
-    subsequent_cruise_payment_fraction = subsequent_cruise_payment_fraction / 100 if subsequent_cruise_payment_fraction else 0.14
+    basic_training_dropout_rate = basic_training_dropout_rate / 100 if basic_training_dropout_rate is not None else 0.15
+    no_offer_rate = no_offer_rate / 100 if no_offer_rate is not None else 0.30
+    early_termination_rate = early_termination_rate / 100 if early_termination_rate is not None else 0.10
+    advanced_training_dropout_rate = advanced_training_dropout_rate / 100 if advanced_training_dropout_rate is not None else 0.12
+    
+    disney_cruise_dropout_rate = disney_cruise_dropout_rate / 100 if disney_cruise_dropout_rate is not None else 0.03
+    disney_cruise_payment_fraction = disney_cruise_payment_fraction / 100 if disney_cruise_payment_fraction is not None else 0.14
+    
+    costa_cruise_dropout_rate = costa_cruise_dropout_rate / 100 if costa_cruise_dropout_rate is not None else 0.03
+    costa_cruise_payment_fraction = costa_cruise_payment_fraction / 100 if costa_cruise_payment_fraction is not None else 0.14
+    
+    break_dropout_rate = break_dropout_rate / 100 if break_dropout_rate is not None else 0.0
     
     # Create a config dict that can be serialized to JSON
     config = {
+        # Training parameters
         'include_advanced_training': include_advanced_training,
         'basic_training_cost': basic_training_cost,
         'basic_training_dropout_rate': basic_training_dropout_rate,
         'basic_training_duration': basic_training_duration,
+        
+        # Offer stage parameters
+        'include_offer_stage': include_offer_stage,
+        'no_offer_rate': no_offer_rate,
+        'offer_stage_duration': offer_stage_duration,
+        
+        # Transportation and placement parameters
         'advanced_training_cost': advanced_training_cost,
         'advanced_training_dropout_rate': advanced_training_dropout_rate,
         'advanced_training_duration': advanced_training_duration,
-        'num_additional_cruises': num_additional_cruises,
-        'first_cruise_base_salary': first_cruise_base_salary,
-        'first_cruise_dropout_rate': first_cruise_dropout_rate,
-        'first_cruise_salary_variation': first_cruise_salary_variation,
-        'first_cruise_duration': first_cruise_duration,
-        'first_cruise_payment_fraction': first_cruise_payment_fraction,
+        
+        # Early termination parameters
+        'include_early_termination': include_early_termination,
+        'early_termination_rate': early_termination_rate,
+        'early_termination_duration': early_termination_duration,
+        
+        # Provider settings
+        'disney_allocation_pct': disney_allocation_pct,
+        'costa_allocation_pct': costa_allocation_pct,
+        'num_cruises': num_cruises,
+        
+        # Disney cruise settings
+        'disney_first_cruise_salary': disney_first_cruise_salary,
+        'disney_second_cruise_salary': disney_second_cruise_salary,
+        'disney_third_cruise_salary': disney_third_cruise_salary,
+        'disney_cruise_duration': disney_cruise_duration,
+        'disney_cruise_dropout_rate': disney_cruise_dropout_rate,
+        'disney_cruise_salary_variation': disney_cruise_salary_variation,
+        'disney_cruise_payment_fraction': disney_cruise_payment_fraction,
+        
+        # Costa cruise settings
+        'costa_first_cruise_salary': costa_first_cruise_salary,
+        'costa_second_cruise_salary': costa_second_cruise_salary,
+        'costa_third_cruise_salary': costa_third_cruise_salary,
+        'costa_cruise_duration': costa_cruise_duration,
+        'costa_cruise_dropout_rate': costa_cruise_dropout_rate,
+        'costa_cruise_salary_variation': costa_cruise_salary_variation,
+        'costa_cruise_payment_fraction': costa_cruise_payment_fraction,
+        
+        # Break settings
         'include_breaks': include_breaks,
         'break_duration': break_duration,
         'break_dropout_rate': break_dropout_rate,
-        'subsequent_cruise_dropout_rate': subsequent_cruise_dropout_rate,
-        'subsequent_cruise_salary_increase': subsequent_cruise_salary_increase,
-        'subsequent_cruise_salary_variation': subsequent_cruise_salary_variation,
-        'subsequent_cruise_duration': subsequent_cruise_duration,
-        'subsequent_cruise_payment_fraction': subsequent_cruise_payment_fraction,
+        
+        # Simulation settings
         'num_students': num_students,
         'num_sims': num_sims,
     }
@@ -813,11 +1158,11 @@ def calculate_progression_data(state_metrics, config):
             elif state_name == "Transportation and placement":
                 dropout_rate = config.get('advanced_training_dropout_rate', 0)
             elif state_name == "First Cruise":
-                dropout_rate = config.get('first_cruise_dropout_rate', 0)
+                dropout_rate = config.get('disney_cruise_dropout_rate', 0)
             elif "Break" in state_name:
                 dropout_rate = config.get('break_dropout_rate', 0)
             elif "Cruise" in state_name:  # For subsequent cruises
-                dropout_rate = config.get('subsequent_cruise_dropout_rate', 0)
+                dropout_rate = config.get('costa_cruise_dropout_rate', 0)
 
             dropouts = round(entered * dropout_rate)
             completed = entered - dropouts
@@ -832,11 +1177,11 @@ def calculate_progression_data(state_metrics, config):
             elif state_name == "Transportation and placement":
                 state_duration = config.get('advanced_training_duration', 0)
             elif state_name == "First Cruise":
-                state_duration = config.get('first_cruise_duration', 0)
+                state_duration = config.get('disney_cruise_duration', 0)
             elif "Break" in state_name:
                 state_duration = config.get('break_duration', 0)
             else:  # Subsequent cruises
-                state_duration = config.get('subsequent_cruise_duration', 0)
+                state_duration = config.get('costa_cruise_duration', 0)
 
             # Convert state salary and payment to monthly values if duration > 0
             avg_monthly_salary = state_salary / state_duration if state_duration > 0 else 0
@@ -894,28 +1239,59 @@ def run_simulation_callback(n_clicks, config_data):
     
     # Create a SimulationConfig object from the stored config
     config = SimulationConfig(
+        # General simulation parameters
         num_students=config_data.get('num_students', 100),
+        
+        # Training parameters
         include_advanced_training=config_data.get('include_advanced_training', True),
         basic_training_cost=config_data.get('basic_training_cost', 2000),
         basic_training_dropout_rate=config_data.get('basic_training_dropout_rate', 0.15),
         basic_training_duration=config_data.get('basic_training_duration', 6),
+        
+        # Offer stage parameters
+        include_offer_stage=config_data.get('include_offer_stage', True),
+        no_offer_rate=config_data.get('no_offer_rate', 0.30),
+        offer_stage_duration=config_data.get('offer_stage_duration', 1),
+        
+        # Transportation and placement parameters
         advanced_training_cost=config_data.get('advanced_training_cost', 2000),
         advanced_training_dropout_rate=config_data.get('advanced_training_dropout_rate', 0.12),
         advanced_training_duration=config_data.get('advanced_training_duration', 5),
-        num_additional_cruises=config_data.get('num_additional_cruises', 3),
-        first_cruise_base_salary=config_data.get('first_cruise_base_salary', 5000),
-        first_cruise_dropout_rate=config_data.get('first_cruise_dropout_rate', 0.15),
-        first_cruise_salary_variation=config_data.get('first_cruise_salary_variation', 6.0),
-        first_cruise_duration=config_data.get('first_cruise_duration', 6),
-        first_cruise_payment_fraction=config_data.get('first_cruise_payment_fraction', 0.14),
+        
+        # Early termination parameters
+        include_early_termination=config_data.get('include_early_termination', True),
+        early_termination_rate=config_data.get('early_termination_rate', 0.10),
+        early_termination_duration=config_data.get('early_termination_duration', 1),
+        
+        # Provider allocation
+        disney_allocation_pct=config_data.get('disney_allocation_pct', 30.0),
+        costa_allocation_pct=config_data.get('costa_allocation_pct', 70.0),
+        
+        # Disney cruise parameters
+        disney_first_cruise_salary=config_data.get('disney_first_cruise_salary', 5100),
+        disney_second_cruise_salary=config_data.get('disney_second_cruise_salary', 5400),
+        disney_third_cruise_salary=config_data.get('disney_third_cruise_salary', 18000),
+        disney_cruise_duration=config_data.get('disney_cruise_duration', 6),
+        disney_cruise_dropout_rate=config_data.get('disney_cruise_dropout_rate', 0.03),
+        disney_cruise_salary_variation=config_data.get('disney_cruise_salary_variation', 5.0),
+        disney_cruise_payment_fraction=config_data.get('disney_cruise_payment_fraction', 0.14),
+        
+        # Costa cruise parameters
+        costa_first_cruise_salary=config_data.get('costa_first_cruise_salary', 5100),
+        costa_second_cruise_salary=config_data.get('costa_second_cruise_salary', 5850),
+        costa_third_cruise_salary=config_data.get('costa_third_cruise_salary', 9000),
+        costa_cruise_duration=config_data.get('costa_cruise_duration', 7),
+        costa_cruise_dropout_rate=config_data.get('costa_cruise_dropout_rate', 0.03),
+        costa_cruise_salary_variation=config_data.get('costa_cruise_salary_variation', 5.0),
+        costa_cruise_payment_fraction=config_data.get('costa_cruise_payment_fraction', 0.14),
+        
+        # Break parameters
         include_breaks=config_data.get('include_breaks', True),
         break_duration=config_data.get('break_duration', 2),
         break_dropout_rate=config_data.get('break_dropout_rate', 0.0),
-        subsequent_cruise_dropout_rate=config_data.get('subsequent_cruise_dropout_rate', 0.02),
-        subsequent_cruise_salary_increase=config_data.get('subsequent_cruise_salary_increase', 10.0),
-        subsequent_cruise_salary_variation=config_data.get('subsequent_cruise_salary_variation', 5.0),
-        subsequent_cruise_duration=config_data.get('subsequent_cruise_duration', 6),
-        subsequent_cruise_payment_fraction=config_data.get('subsequent_cruise_payment_fraction', 0.14)
+        
+        # Number of cruises
+        num_cruises=config_data.get('num_cruises', 3)
     )
     
     random_seed = random.randint(1, 10000)
@@ -935,7 +1311,7 @@ def run_simulation_callback(n_clicks, config_data):
         
         # Try up to 10 times to find a simulation that completes all states
         for attempt in range(10):
-            test_sim = run_simulation(state_configs=state_configs, random_seed=random_seed + attempt)
+            test_sim = run_simulation(state_configs=state_configs, random_seed=random_seed + attempt, simulation_config=config)
             states_completed = len(test_sim.get('completed_states', []))
             is_dropout = test_sim.get('dropout', True)
             
@@ -951,12 +1327,13 @@ def run_simulation_callback(n_clicks, config_data):
                     break
         
         # Use our best simulation for state results
-        single_sim = best_sim if best_sim else run_simulation(state_configs=state_configs, random_seed=random_seed)
+        single_sim = best_sim if best_sim else run_simulation(state_configs=state_configs, random_seed=random_seed, simulation_config=config)
         print(f"Using simulation with {len(single_sim.get('state_results', []))} states for cash flow")
         
         # Run the batch simulation for aggregate statistics
         batch_results = run_simulation_batch(config)
         
+        # The rest of the function remains the same
         if not batch_results:
             print("Error: Failed to generate batch simulation results")
             return "Error: Failed to generate simulation results", None
@@ -1005,6 +1382,25 @@ def run_simulation_callback(n_clicks, config_data):
             batch_results['state_metrics'] = cleaned_metrics # Replace original with cleaned version
         # *** END: Pre-process state_metrics ***
 
+        # Add provider metrics to the cleaned output
+        if 'provider_metrics' in batch_results and isinstance(batch_results['provider_metrics'], dict):
+            provider_metrics = {}
+            for provider, metrics in batch_results['provider_metrics'].items():
+                if isinstance(metrics, dict):
+                    provider_metrics[provider] = {
+                        k: v for k, v in metrics.items() 
+                        if isinstance(v, (int, float, str, bool, type(None)))
+                    }
+            batch_results['provider_metrics'] = provider_metrics
+
+        # Add provider distribution to the cleaned output
+        if 'provider_distribution' in batch_results and isinstance(batch_results['provider_distribution'], dict):
+            provider_distribution = {
+                k: v for k, v in batch_results['provider_distribution'].items()
+                if isinstance(v, (int, float)) and k is not None
+            }
+            batch_results['provider_distribution'] = provider_distribution
+
         # Serialization logic (more explicit for state_metrics)
         serializable_results = {}
         for key, value in batch_results.items():
@@ -1024,6 +1420,9 @@ def run_simulation_callback(n_clicks, config_data):
                  # These should already be dicts with string keys (state index as string) and numeric values
                  serializable_results[key] = {str(k): v for k, v in value.items()} if isinstance(value, dict) else {}
             # *** END Handle New Aggregated State Data ***
+            elif key in ['provider_metrics', 'provider_distribution']:
+                # These are already cleaned above
+                serializable_results[key] = value
             elif isinstance(value, (int, float, str, bool, type(None))):
                 serializable_results[key] = value
             elif isinstance(value, dict):
@@ -1127,10 +1526,175 @@ def update_overview_content(results):
     state_total_costs = results.get('state_total_costs', {})
     state_total_payments = results.get('state_total_payments', {})
     state_entry_counts = results.get('state_entry_counts', {})
+    provider_metrics = results.get('provider_metrics', {})
+    provider_distribution = results.get('provider_distribution', {})
     num_simulations = config.get('num_students', 0)
+
+    # Create a more informative career path diagram
+    career_explanation = html.Div([
+        html.H5("Career Path Structure", style={'textAlign': 'center', 'marginBottom': '15px'}),
+        html.P([
+            "This simulation models two parallel career tracks after training and placement: ",
+            html.Span("Disney", style={'color': '#2196F3', 'fontWeight': 'bold'}),
+            " (30% of students) and ",
+            html.Span("Costa", style={'color': '#4CAF50', 'fontWeight': 'bold'}),
+            " (70% of students). Students are assigned to one provider after training and follow only that provider's path."
+        ], style={'marginBottom': '10px'})
+    ], style={'marginBottom': '30px', 'backgroundColor': '#f9f9f9', 'padding': '15px', 'borderRadius': '5px'})
+
+    # Group states by provider
+    disney_states = []
+    costa_states = []
+    training_states = []
+    
+    # Reorganize state metrics for better flow visualization
+    for state_idx_str, metrics in sorted(state_metrics.items(), key=lambda x: int(x[0])):
+        if isinstance(metrics, dict):
+            state_name = metrics.get('name', f"State {state_idx_str}")
+            provider = metrics.get('provider', "")
+            
+            if "Disney" in provider:
+                disney_states.append((int(state_idx_str), metrics, state_name))
+            elif "Costa" in provider:
+                costa_states.append((int(state_idx_str), metrics, state_name))
+            elif "Training" in state_name or "Transportation" in state_name:
+                training_states.append((int(state_idx_str), metrics, state_name))
 
     # Calculate progression data using the helper function
     progression_data = calculate_progression_data(state_metrics, config)
+
+    # Create provider assignment Sankey diagram - this is a simplified diagram showing the flow
+    # from training to provider selection
+    
+    # Get training and transportation/placement information
+    train_transported_count = 0
+    for row in progression_data:
+        if "Transportation and placement" in row['state']:
+            train_transported_count = row['completed']
+            break
+    
+    # If we didn't find it, use the training completed count
+    if train_transported_count == 0:
+        for row in progression_data:
+            if "Training" in row['state']:
+                train_transported_count = row['completed']
+                break
+    
+    # Calculate provider assignments based on percentage allocation
+    disney_allocation = config.get('disney_allocation_pct', 30) / 100
+    costa_allocation = config.get('costa_allocation_pct', 70) / 100
+    
+    disney_assigned = int(train_transported_count * disney_allocation)
+    costa_assigned = train_transported_count - disney_assigned
+    
+    # Create Sankey diagram for provider assignment
+    labels = ["Training & Placement", "Disney Cruise Career", "Costa Cruise Career"]
+    
+    sankey_fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=labels,
+            color=["#9E9E9E", "#2196F3", "#4CAF50"]  # Grey, Blue, Green
+        ),
+        link=dict(
+            source=[0, 0],  # From Training & Placement
+            target=[1, 2],  # To Disney and Costa
+            value=[disney_assigned, costa_assigned],
+            color=["rgba(33, 150, 243, 0.6)", "rgba(76, 175, 80, 0.6)"]  # Blue, Green
+        )
+    )])
+
+    sankey_fig.update_layout(
+        title_text="Career Path Assignment Flow",
+        font_size=12,
+        height=300
+    )
+    
+    # Create career path illustration to show cruise sequences
+    cruise_sequence_fig = go.Figure()
+    
+    # Training steps (common to both paths)
+    training_steps = []
+    for idx, metrics, name in sorted(training_states, key=lambda x: x[0]):
+        training_steps.append(name)
+    
+    # Disney cruises
+    disney_steps = []
+    for idx, metrics, name in sorted(disney_states, key=lambda x: x[0]):
+        if "Break" not in name:  # Skip breaks for the diagram
+            disney_steps.append(name)
+    
+    # Costa cruises
+    costa_steps = []
+    for idx, metrics, name in sorted(costa_states, key=lambda x: x[0]):
+        if "Break" not in name:  # Skip breaks for the diagram
+            costa_steps.append(name)
+    
+    # Data for the diagram
+    steps_data = []
+    
+    # Training steps
+    for i, step in enumerate(training_steps):
+        steps_data.append({
+            'Step': i+1,
+            'Path': 'Common',
+            'Stage': step,
+            'Duration': (
+                config.get('basic_training_duration', 6) if "Training" in step and not "Transportation" in step
+                else config.get('advanced_training_duration', 5) if "Transportation" in step
+                else 0
+            ),
+            'Start': 0  # Add a start column
+        })
+    
+    # Disney steps
+    for i, step in enumerate(disney_steps):
+        steps_data.append({
+            'Step': i+len(training_steps)+1,
+            'Path': 'Disney',
+            'Stage': step,
+            'Duration': config.get('disney_cruise_duration', 6),
+            'Start': 0  # Add a start column
+        })
+    
+    # Costa steps
+    for i, step in enumerate(costa_steps):
+        steps_data.append({
+            'Step': i+len(training_steps)+1,
+            'Path': 'Costa',
+            'Stage': step,
+            'Duration': config.get('costa_cruise_duration', 7),
+            'Start': 0  # Add a start column
+        })
+    
+    # Create a better visual representation of the career paths
+    career_paths_fig = px.timeline(
+        steps_data,
+        x_start='Start',
+        x_end='Duration',
+        y='Path',
+        color='Path',
+        text='Stage',
+        color_discrete_map={
+            'Common': '#9E9E9E',
+            'Disney': '#2196F3',
+            'Costa': '#4CAF50'
+        },
+        title='Career Path Comparison: Disney vs Costa'
+    )
+    
+    career_paths_fig.update_yaxes(
+        categoryorder='array',
+        categoryarray=['Disney', 'Common', 'Costa']
+    )
+    
+    career_paths_fig.update_layout(
+        xaxis_title='Duration (months)',
+        yaxis_title='Provider Track',
+        height=300
+    )
 
     # Create summary stats boxes
     summary_stats_boxes = html.Div([
@@ -1155,6 +1719,29 @@ def update_overview_content(results):
             ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'})
         ], style={'marginBottom': '20px'})
     ])
+    
+    # Create provider distribution boxes
+    provider_boxes = None
+    if provider_distribution:
+        total_students = sum(provider_distribution.values())
+        provider_boxes = html.Div([
+            html.H5("Provider Distribution", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            html.Div([
+                html.Div([
+                    html.H5("Disney", style={'textAlign': 'center', 'marginBottom': '10px', 'color': '#2196F3'}),
+                    html.Div(f"{provider_distribution.get('Disney', 0)} students", style={'textAlign': 'center'}),
+                    html.Div(f"({provider_distribution.get('Disney', 0)/total_students*100:.1f}%)", 
+                             style={'textAlign': 'center', 'fontSize': '18px'})
+                ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#e3f2fd', 'padding': '15px', 'borderRadius': '5px', 'marginRight': '10%'}),
+                
+                html.Div([
+                    html.H5("Costa", style={'textAlign': 'center', 'marginBottom': '10px', 'color': '#4CAF50'}),
+                    html.Div(f"{provider_distribution.get('Costa', 0)} students", style={'textAlign': 'center'}),
+                    html.Div(f"({provider_distribution.get('Costa', 0)/total_students*100:.1f}%)", 
+                             style={'textAlign': 'center', 'fontSize': '18px'})
+                ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#e8f5e9', 'padding': '15px', 'borderRadius': '5px'})
+            ], style={'marginBottom': '20px'})
+        ], style={'marginBottom': '30px'})
 
     # Create Sankey diagram for student flow
     labels = [row['state'] for row in progression_data] + [f"Dropout ({row['state']})" for row in progression_data if row['dropouts'] > 0]
@@ -1208,6 +1795,7 @@ def update_overview_content(results):
     for state_idx_str, metrics in sorted(state_metrics.items(), key=lambda x: int(x[0])):
         if isinstance(metrics, dict):
             state_name = metrics.get('name', f"State {state_idx_str}")
+            provider = metrics.get('provider', "")
             
             # Skip advanced training state if disabled
             if "Advanced Training" in state_name and not config.get('include_advanced_training', True):
@@ -1221,6 +1809,7 @@ def update_overview_content(results):
                 net_cash_flow = total_payment - total_cost
                 state_data.append({
                     "State": state_name,
+                    "Provider": provider,
                     "Total Costs": total_cost,
                     "Total Payments": total_payment,
                     "Net Cash Flow": net_cash_flow,
@@ -1228,21 +1817,21 @@ def update_overview_content(results):
                     "Entry Rate (%)": (entry_count / num_simulations * 100) if num_simulations > 0 else 0,
                     # Add new calculated fields
                     "Avg Payment Per Student": total_payment / entry_count if entry_count > 0 else 0,
-                    # Get payment fraction based on state name
+                    # Get payment fraction based on provider and state name
                     "Payment Fraction (%)": (
-                        config.get('first_cruise_payment_fraction', 0.14) * 100 if "First Cruise" in state_name
-                        else config.get('subsequent_cruise_payment_fraction', 0.14) * 100 if "Cruise" in state_name
+                        config.get('disney_cruise_payment_fraction', 0.14) * 100 if "Disney" in provider and "Cruise" in state_name
+                        else config.get('costa_cruise_payment_fraction', 0.14) * 100 if "Costa" in provider and "Cruise" in state_name
                         else 0
                     ),
                     # Calculate implied average salary
                     "Implied Avg Salary": (
                         (total_payment / entry_count) / (
-                            config.get('first_cruise_payment_fraction', 0.14) if "First Cruise" in state_name
-                            else config.get('subsequent_cruise_payment_fraction', 0.14) if "Cruise" in state_name
+                            config.get('disney_cruise_payment_fraction', 0.14) if "Disney" in provider and "Cruise" in state_name
+                            else config.get('costa_cruise_payment_fraction', 0.14) if "Costa" in provider and "Cruise" in state_name
                             else 1  # Avoid division by zero for non-cruise states
                         ) if entry_count > 0 and (
-                            config.get('first_cruise_payment_fraction', 0.14) if "First Cruise" in state_name
-                            else config.get('subsequent_cruise_payment_fraction', 0.14) if "Cruise" in state_name
+                            config.get('disney_cruise_payment_fraction', 0.14) if "Disney" in provider and "Cruise" in state_name
+                            else config.get('costa_cruise_payment_fraction', 0.14) if "Costa" in provider and "Cruise" in state_name
                             else 1
                         ) > 0 else 0
                     )
@@ -1274,27 +1863,87 @@ def update_overview_content(results):
             ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'})
         ], style={'border': '1px solid #ddd', 'padding': '15px', 'borderRadius': '5px', 'backgroundColor': '#f9f9f9'})
     ])
+    
+    # Create provider-specific metrics if available
+    provider_metrics_boxes = None
+    if provider_metrics:
+        provider_metrics_boxes = html.Div([
+            html.H5("Provider-Specific Results", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            html.Div([
+                # Disney metrics
+                html.Div([
+                    html.H5("Disney", style={'textAlign': 'center', 'marginBottom': '10px', 'color': '#2196F3'}),
+                    html.Div([
+                        html.P("Avg Training Cost:", style={'fontWeight': 'bold'}),
+                        html.P(f"${provider_metrics.get('Disney', {}).get('avg_training_cost', 0):,.2f}")
+                    ], style={'marginBottom': '5px'}),
+                    html.Div([
+                        html.P("Avg Total Payments:", style={'fontWeight': 'bold'}),
+                        html.P(f"${provider_metrics.get('Disney', {}).get('avg_total_payments', 0):,.2f}")
+                    ], style={'marginBottom': '5px'}),
+                    html.Div([
+                        html.P("Avg Net Cash Flow:", style={'fontWeight': 'bold'}),
+                        html.P(f"${provider_metrics.get('Disney', {}).get('avg_net_cash_flow', 0):,.2f}")
+                    ], style={'marginBottom': '5px'}),
+                    html.Div([
+                        html.P("ROI:", style={'fontWeight': 'bold'}),
+                        html.P(f"{provider_metrics.get('Disney', {}).get('avg_roi', 0):.1f}%")
+                    ])
+                ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#e3f2fd', 'padding': '15px', 'borderRadius': '5px', 'marginRight': '10%'}),
+                
+                # Costa metrics
+                html.Div([
+                    html.H5("Costa", style={'textAlign': 'center', 'marginBottom': '10px', 'color': '#4CAF50'}),
+                    html.Div([
+                        html.P("Avg Training Cost:", style={'fontWeight': 'bold'}),
+                        html.P(f"${provider_metrics.get('Costa', {}).get('avg_training_cost', 0):,.2f}")
+                    ], style={'marginBottom': '5px'}),
+                    html.Div([
+                        html.P("Avg Total Payments:", style={'fontWeight': 'bold'}),
+                        html.P(f"${provider_metrics.get('Costa', {}).get('avg_total_payments', 0):,.2f}")
+                    ], style={'marginBottom': '5px'}),
+                    html.Div([
+                        html.P("Avg Net Cash Flow:", style={'fontWeight': 'bold'}),
+                        html.P(f"${provider_metrics.get('Costa', {}).get('avg_net_cash_flow', 0):,.2f}")
+                    ], style={'marginBottom': '5px'}),
+                    html.Div([
+                        html.P("ROI:", style={'fontWeight': 'bold'}),
+                        html.P(f"{provider_metrics.get('Costa', {}).get('avg_roi', 0):.1f}%")
+                    ])
+                ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#e8f5e9', 'padding': '15px', 'borderRadius': '5px'})
+            ], style={'marginBottom': '20px'})
+        ], style={'marginBottom': '30px'})
 
     # Create cash flow visualization
     cash_flow_fig = go.Figure()
     if state_data:
-        state_net_flows = [item['Net Cash Flow'] for item in state_data]
-        valid_state_names = [item['State'] for item in state_data]
-
-        cash_flow_fig.add_trace(go.Bar(
-            x=valid_state_names,
-            y=state_net_flows,
-            name="Net Cash Flow by State",
-            marker_color=['red' if cf < 0 else ('green' if cf > 0 else 'grey') for cf in state_net_flows],
-            text=[f"${abs(cf):,.2f}" if cf != 0 else "" for cf in state_net_flows],
-            textposition='auto'
-        ))
-
+        # Add provider column for coloring
+        colors = {
+            "Disney": "#2196F3",  # Blue for Disney
+            "Costa": "#4CAF50",   # Green for Costa
+            "": "#9E9E9E"         # Grey for non-provider states (like training)
+        }
+        
+        # Create figure with provider-based coloring
+        cash_flow_fig = px.bar(
+            state_data,
+            x="State",
+            y="Net Cash Flow",
+            color="Provider",
+            color_discrete_map=colors,
+            title="Net Cash Flow by State",
+            text="Net Cash Flow"
+        )
+        
+        cash_flow_fig.update_traces(
+            texttemplate="%{text:$,.2f}",
+            textposition="auto"
+        )
+        
         cash_flow_fig.update_layout(
-            title='Net Cash Flow by State',
-            xaxis_title='State',
-            yaxis_title='Net Cash Flow ($)',
-            template='plotly_white'
+            xaxis_title="State",
+            yaxis_title="Net Cash Flow ($)",
+            template="plotly_white"
         )
 
     # Create detailed state metrics table
@@ -1303,6 +1952,7 @@ def update_overview_content(results):
         data=state_data,
         columns=[
             {"name": "State", "id": "State"},
+            {"name": "Provider", "id": "Provider"},
             {"name": "Simulations Entered", "id": "Simulations Entered", 'type': 'numeric'},
             {"name": "Entry Rate (%)", "id": "Entry Rate (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
             {"name": "Total Costs", "id": "Total Costs", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
@@ -1329,6 +1979,14 @@ def update_overview_content(results):
             {
                 'if': {'filter_query': '{Net Cash Flow} > 0'},
                 'color': 'green'
+            },
+            {
+                'if': {'filter_query': '{Provider} = "Disney"'},
+                'backgroundColor': 'rgba(33, 150, 243, 0.1)'
+            },
+            {
+                'if': {'filter_query': '{Provider} = "Costa"'},
+                'backgroundColor': 'rgba(76, 175, 80, 0.1)'
             }
         ],
         tooltip_data=[
@@ -1348,11 +2006,25 @@ def update_overview_content(results):
         # Top section - Summary stats
         summary_stats_boxes,
         
-        # Student flow section
+        # Career path explanation 
+        career_explanation,
+        
+        # Provider distribution section (if available)
+        provider_boxes if provider_boxes else None,
+        
+        # Career path visualization
         html.Div([
-            html.H5("Student Progression Flow", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            dcc.Graph(figure=sankey_fig, style={'marginBottom': '30px'})
+            html.H5("Provider Assignment Flow", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            dcc.Graph(figure=sankey_fig, style={'marginBottom': '20px'})
         ]),
+        
+        html.Div([
+            html.H5("Career Path Structure", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            dcc.Graph(figure=career_paths_fig, style={'marginBottom': '30px'})
+        ]),
+        
+        # Provider-specific metrics (if available)
+        provider_metrics_boxes if provider_metrics_boxes else None,
         
         # Financial section
         html.Div([
@@ -1395,6 +2067,7 @@ def update_monthly_cashflow_content(results):
     state_total_costs = results.get('state_total_costs', {})
     state_total_payments = results.get('state_total_payments', {})
     state_entry_counts = results.get('state_entry_counts', {})
+    provider_distribution = results.get('provider_distribution', {})
     
     if not state_metrics or not state_total_costs or not state_total_payments:
         return html.Div([
@@ -1405,14 +2078,47 @@ def update_monthly_cashflow_content(results):
             ])
         ])
     
+    # Create explanatory text
+    provider_explanation = html.Div([
+        html.H5("Provider Track Explanation", style={'textAlign': 'center', 'marginBottom': '15px'}),
+        html.P([
+            "This simulation models two parallel career tracks after training and placement: ",
+            html.Span("Disney", style={'color': '#2196F3', 'fontWeight': 'bold'}),
+            " (30% of students) and ",
+            html.Span("Costa", style={'color': '#4CAF50', 'fontWeight': 'bold'}),
+            " (70% of students). Students follow only one provider's path, not both."
+        ], style={'marginBottom': '10px'}),
+        html.P([
+            "In the visualization below, we show the two possible career paths separately:"
+        ], style={'marginBottom': '10px'}),
+        html.Div([
+            html.Div([
+                html.P(html.Span("Training & Placement", style={'fontWeight': 'bold'}), style={'marginBottom': '5px'}),
+                html.P("↓", style={'marginBottom': '0px', 'textAlign': 'center'}),
+                html.P([
+                    html.Span("Disney Track (30%)", style={'color': '#2196F3', 'fontWeight': 'bold'}),
+                    ": 3 cruises, 6 months each"
+                ], style={'marginBottom': '5px'}),
+            ], style={'width': '45%', 'display': 'inline-block', 'marginRight': '10%'}),
+            
+            html.Div([
+                html.P(html.Span("Training & Placement", style={'fontWeight': 'bold'}), style={'marginBottom': '5px'}),
+                html.P("↓", style={'marginBottom': '0px', 'textAlign': 'center'}),
+                html.P([
+                    html.Span("Costa Track (70%)", style={'color': '#4CAF50', 'fontWeight': 'bold'}),
+                    ": 3 cruises, 7 months each"
+                ], style={'marginBottom': '5px'})
+            ], style={'width': '45%', 'display': 'inline-block'})
+        ], style={'marginBottom': '20px', 'textAlign': 'center'})
+    ], style={'marginBottom': '30px', 'backgroundColor': '#f9f9f9', 'padding': '15px', 'borderRadius': '8px'})
+    
     # Process state data in order
     sorted_states = sorted([(int(idx), data) for idx, data in state_metrics.items()], key=lambda x: x[0])
     
-    # Create a list to store monthly cash flows
-    monthly_cash_flows = []
-    cumulative_cash_flows = []
-    month_labels = []
-    current_month = 0
+    # Separate data by provider for better visualization
+    training_states = []
+    disney_states = []
+    costa_states = []
     
     for state_idx, state_data in sorted_states:
         if not isinstance(state_data, dict):
@@ -1420,9 +2126,38 @@ def update_monthly_cashflow_content(results):
             
         state_idx_str = str(state_idx)
         state_name = state_data.get('name', f'State {state_idx}')
+        provider = state_data.get('provider', "")
         
-        # Get duration based on state type
-        state_duration = 0
+        # Categorize by provider
+        if not provider and ("Training" in state_name or "Transportation" in state_name):
+            training_states.append((state_idx, state_data))
+        elif "Disney" in provider:
+            disney_states.append((state_idx, state_data))
+        elif "Costa" in provider:
+            costa_states.append((state_idx, state_data))
+    
+    # Create separate cash flow arrays for each provider track
+    disney_months = []
+    disney_cash_flows = []
+    disney_cumulative = []
+    
+    costa_months = []
+    costa_cash_flows = []
+    costa_cumulative = []
+    
+    training_months = []
+    training_cash_flows = []
+    training_cumulative = []
+    
+    current_month = 0
+    running_total = 0
+    
+    # Process training states first
+    for state_idx, state_data in training_states:
+        state_idx_str = str(state_idx)
+        state_name = state_data.get('name', f'State {state_idx}')
+        
+        # Get duration
         if "Training" in state_name and not "Transportation" in state_name:
             state_duration = config.get('basic_training_duration', 6)
         elif "Transportation and placement" in state_name:
@@ -1430,12 +2165,6 @@ def update_monthly_cashflow_content(results):
             # Skip if advanced training is disabled
             if not config.get('include_advanced_training', True):
                 continue
-        elif "First Cruise" in state_name:
-            state_duration = config.get('first_cruise_duration', 6)
-        elif "Cruise" in state_name:
-            state_duration = config.get('subsequent_cruise_duration', 6)
-        elif "Break" in state_name:
-            state_duration = config.get('break_duration', 2)
         
         # Skip states with no duration
         if state_duration <= 0:
@@ -1443,109 +2172,256 @@ def update_monthly_cashflow_content(results):
         
         # Get total costs and payments for this state
         total_cost = state_total_costs.get(state_idx_str, 0)
-        total_payment = state_total_payments.get(state_idx_str, 0)
         
-        # Process differently based on state type
-        if "Training" in state_name or "Transportation and placement" in state_name:
-            # Add full cost up front for training states
-            if total_cost > 0:
-                monthly_cash_flows.append(-total_cost)
-                month_labels.append(f"Month {current_month + 1} ({state_name})")
-                current_month += 1
-                
-                # Add remaining months with 0 cash flow
-                for i in range(state_duration - 1):
-                    monthly_cash_flows.append(0)
-                    month_labels.append(f"Month {current_month + 1} ({state_name})")
-                    current_month += 1
-            else:
-                # Just advance months if no cost
-                for i in range(state_duration):
-                    monthly_cash_flows.append(0)
-                    month_labels.append(f"Month {current_month + 1} ({state_name})")
-                    current_month += 1
-        else:
-            # For cruise and break states, distribute payments evenly
-            monthly_payment = total_payment / state_duration if state_duration > 0 else 0
+        # Add full cost up front for training states
+        if total_cost > 0:
+            training_cash_flows.append(-total_cost)
+            training_months.append(f"Month {current_month + 1} ({state_name})")
+            running_total -= total_cost
+            training_cumulative.append(running_total)
+            current_month += 1
             
+            # Add remaining months with 0 cash flow
+            for i in range(state_duration - 1):
+                training_cash_flows.append(0)
+                training_months.append(f"Month {current_month + 1} ({state_name})")
+                training_cumulative.append(running_total)
+                current_month += 1
+        else:
+            # Just advance months if no cost
             for i in range(state_duration):
-                monthly_cash_flows.append(monthly_payment)
-                month_labels.append(f"Month {current_month + 1} ({state_name})")
+                training_cash_flows.append(0)
+                training_months.append(f"Month {current_month + 1} ({state_name})")
+                training_cumulative.append(running_total)
                 current_month += 1
     
-    # Calculate cumulative cash flows
-    running_total = 0
-    for cf in monthly_cash_flows:
-        running_total += cf
-        cumulative_cash_flows.append(running_total)
+    # Capture the end of training for branching
+    end_training_month = current_month
+    end_training_cumulative = running_total if training_cumulative else 0
     
-    # If no cash flows were generated, show an error
-    if not monthly_cash_flows:
-        return html.Div([
-            html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
-            html.Div([
-                html.P("Could not generate cash flows from state results. Try running a simulation again.", 
-                       style={'textAlign': 'center', 'color': 'red', 'fontWeight': 'bold'})
-            ])
-        ])
+    # Process Disney states
+    current_month = end_training_month
+    running_total = end_training_cumulative
     
-    # Calculate IRR
-    irr = None
-    try:
-        if len(monthly_cash_flows) > 0:
-            cash_flow_array = np.array(monthly_cash_flows)
-            if any(cf > 0 for cf in cash_flow_array) and any(cf < 0 for cf in cash_flow_array):
-                monthly_irr = npf.irr(cash_flow_array)
-                irr = ((1 + monthly_irr) ** 12 - 1) * 100  # Convert to annual percentage
-    except Exception as e:
-        print(f"IRR calculation error: {str(e)}")
+    for state_idx, state_data in disney_states:
+        state_idx_str = str(state_idx)
+        state_name = state_data.get('name', f'State {state_idx}')
+        
+        # Get duration and payment info
+        if "Break" in state_name:
+            state_duration = config.get('break_duration', 2)
+            monthly_payment = 0
+        else:  # Cruise states
+            state_duration = config.get('disney_cruise_duration', 6)
+            total_payment = state_total_payments.get(state_idx_str, 0)
+            
+            # Adjust payment based on Disney allocation percentage
+            disney_pct = config.get('disney_allocation_pct', 30) / 100
+            monthly_payment = (total_payment / state_duration / disney_pct) if state_duration > 0 and disney_pct > 0 else 0
+        
+        # Skip states with no duration
+        if state_duration <= 0:
+            continue
+        
+        # Add months and cash flows
+        for i in range(state_duration):
+            disney_cash_flows.append(monthly_payment)
+            disney_months.append(f"Month {current_month + 1} ({state_name})")
+            running_total += monthly_payment
+            disney_cumulative.append(running_total)
+            current_month += 1
     
-    # Create cash flow visualization
-    cash_flow_fig = go.Figure()
-    cash_flow_fig.add_trace(go.Bar(
-        x=month_labels,
-        y=monthly_cash_flows,
-        name="Monthly Cash Flow",
-        marker_color=['red' if cf < 0 else 'green' for cf in monthly_cash_flows]
-    ))
-    cash_flow_fig.add_trace(go.Scatter(
-        x=month_labels,
-        y=cumulative_cash_flows,
-        name="Cumulative Cash Flow",
-        line=dict(color='blue', width=2),
+    # Reset for Costa path
+    current_month = end_training_month
+    running_total = end_training_cumulative
+    
+    for state_idx, state_data in costa_states:
+        state_idx_str = str(state_idx)
+        state_name = state_data.get('name', f'State {state_idx}')
+        
+        # Get duration and payment info
+        if "Break" in state_name:
+            state_duration = config.get('break_duration', 2)
+            monthly_payment = 0
+        else:  # Cruise states
+            state_duration = config.get('costa_cruise_duration', 7)
+            total_payment = state_total_payments.get(state_idx_str, 0)
+            
+            # Adjust payment based on Costa allocation percentage
+            costa_pct = config.get('costa_allocation_pct', 70) / 100
+            monthly_payment = (total_payment / state_duration / costa_pct) if state_duration > 0 and costa_pct > 0 else 0
+        
+        # Skip states with no duration
+        if state_duration <= 0:
+            continue
+        
+        # Add months and cash flows
+        for i in range(state_duration):
+            costa_cash_flows.append(monthly_payment)
+            costa_months.append(f"Month {current_month + 1} ({state_name})")
+            running_total += monthly_payment
+            costa_cumulative.append(running_total)
+            current_month += 1
+    
+    # Combine the training path with both provider paths for visualization
+    training_trace = go.Bar(
+        name="Training Path",
+        x=training_months,
+        y=training_cash_flows,
+        marker_color='#9E9E9E',  # Grey
+        offsetgroup=0
+    )
+    
+    training_cumulative_trace = go.Scatter(
+        name="Training Cumulative",
+        x=training_months,
+        y=training_cumulative,
+        mode='lines+markers',
+        line=dict(color='#000000', width=2),  # Black
+        yaxis='y2',
+        showlegend=False
+    )
+    
+    disney_trace = go.Bar(
+        name="Disney Path (30%)",
+        x=disney_months,
+        y=disney_cash_flows,
+        marker_color='#2196F3',  # Blue
+        offsetgroup=1
+    )
+    
+    disney_cumulative_trace = go.Scatter(
+        name="Disney Cumulative",
+        x=disney_months,
+        y=disney_cumulative,
+        mode='lines+markers',
+        line=dict(color='#0D47A1', width=2),  # Dark blue
         yaxis='y2'
-    ))
+    )
+    
+    costa_trace = go.Bar(
+        name="Costa Path (70%)",
+        x=costa_months,
+        y=costa_cash_flows,
+        marker_color='#4CAF50',  # Green
+        offsetgroup=2
+    )
+    
+    costa_cumulative_trace = go.Scatter(
+        name="Costa Cumulative",
+        x=costa_months,
+        y=costa_cumulative,
+        mode='lines+markers',
+        line=dict(color='#1B5E20', width=2),  # Dark green
+        yaxis='y2'
+    )
+    
+    # Create the figure with all traces
+    cash_flow_fig = go.Figure(data=[
+        training_trace, training_cumulative_trace,
+        disney_trace, disney_cumulative_trace,
+        costa_trace, costa_cumulative_trace
+    ])
+    
+    # Add line separating training from provider paths
+    if end_training_month > 0:
+        last_training_x = training_months[-1] if training_months else "Month 1"
+        cash_flow_fig.add_vline(
+            x=end_training_month - 0.5,
+            line=dict(color="black", width=2, dash="dash"),
+            annotation_text="Provider Assignment (30% Disney, 70% Costa)",
+            annotation_position="top"
+        )
+    
     cash_flow_fig.update_layout(
-        title='Monthly and Cumulative Cash Flows (With Attrition)',
-        xaxis_title='Month',
-        yaxis_title='Monthly Cash Flow ($)',
+        title='Career Path Cash Flows (Training → Provider Assignment)',
+        barmode='group',
+        xaxis=dict(
+            title='Month',
+            tickangle=45,
+            showticklabels=True
+        ),
+        yaxis=dict(
+            title='Monthly Cash Flow ($)'
+        ),
         yaxis2=dict(
             title='Cumulative Cash Flow ($)',
             overlaying='y',
             side='right'
         ),
+        legend_title="Career Paths",
         template='plotly_white',
-        showlegend=True,
         height=600,
-        margin=dict(b=100),
-        xaxis=dict(
-            tickangle=45,
-            showticklabels=True
-        )
+        margin=dict(b=100)
     )
+    
+    # Calculate overall IRR
+    # Need to combine the weighted average of both paths
+    disney_pct = config.get('disney_allocation_pct', 30) / 100
+    costa_pct = config.get('costa_allocation_pct', 70) / 100
+    
+    # Create weighted cash flows
+    combined_cash_flows = training_cash_flows.copy()
+    
+    # Add weighted Disney and Costa cash flows
+    max_provider_length = max(len(disney_cash_flows), len(costa_cash_flows))
+    for i in range(max_provider_length):
+        disney_cf = disney_cash_flows[i] if i < len(disney_cash_flows) else 0
+        costa_cf = costa_cash_flows[i] if i < len(costa_cash_flows) else 0
+        weighted_cf = (disney_cf * disney_pct) + (costa_cf * costa_pct)
+        combined_cash_flows.append(weighted_cf)
+    
+    # Calculate IRR
+    irr = None
+    try:
+        if combined_cash_flows and any(cf < 0 for cf in combined_cash_flows) and any(cf > 0 for cf in combined_cash_flows):
+            monthly_irr = npf.irr(np.array(combined_cash_flows))
+            irr = ((1 + monthly_irr) ** 12 - 1) * 100  # Convert to annual percentage
+    except Exception as e:
+        print(f"IRR calculation error: {str(e)}")
+    
+    # Create data for the monthly cash flow table
+    table_data = []
+    
+    # Add training data
+    for i, (month, cf, cum) in enumerate(zip(training_months, training_cash_flows, training_cumulative)):
+        table_data.append({
+            'Month': month,
+            'Path': 'Training',
+            'Cash Flow': cf,
+            'Cumulative': cum
+        })
+    
+    # Add Disney data
+    for i, (month, cf, cum) in enumerate(zip(disney_months, disney_cash_flows, disney_cumulative)):
+        table_data.append({
+            'Month': month,
+            'Path': 'Disney (30%)',
+            'Cash Flow': cf,
+            'Cumulative': cum
+        })
+    
+    # Add Costa data
+    for i, (month, cf, cum) in enumerate(zip(costa_months, costa_cash_flows, costa_cumulative)):
+        table_data.append({
+            'Month': month,
+            'Path': 'Costa (70%)',
+            'Cash Flow': cf,
+            'Cumulative': cum
+        })
+    
+    # Sort by Month and Path
+    table_data = sorted(table_data, key=lambda x: (int(x['Month'].split(' ')[1]), x['Path']))
     
     # Create the monthly cash flow table
     monthly_cashflow_table = dash_table.DataTable(
         id='monthly-cashflow-table',
-        data=pd.DataFrame({
-            'Month': month_labels,
-            'Cash Flow': monthly_cash_flows,
-            'Cumulative Cash Flow': cumulative_cash_flows
-        }).to_dict('records'),
+        data=table_data,
         columns=[
             {"name": "Month", "id": "Month"},
+            {"name": "Career Path", "id": "Path"},
             {"name": "Cash Flow", "id": "Cash Flow", "type": "numeric", "format": {"specifier": "$,.2f"}},
-            {"name": "Cumulative Cash Flow", "id": "Cumulative Cash Flow", "type": "numeric", "format": {"specifier": "$,.2f"}}
+            {"name": "Cumulative Cash Flow", "id": "Cumulative", "type": "numeric", "format": {"specifier": "$,.2f"}}
         ],
         style_cell={'textAlign': 'center', 'padding': '10px'},
         style_header={
@@ -1564,20 +2440,35 @@ def update_monthly_cashflow_content(results):
             {
                 'if': {'filter_query': '{Cash Flow} > 0'},
                 'color': 'green'
+            },
+            {
+                'if': {'filter_query': '{Path} = "Disney (30%)"'},
+                'backgroundColor': 'rgba(33, 150, 243, 0.1)'
+            },
+            {
+                'if': {'filter_query': '{Path} = "Costa (70%)"'},
+                'backgroundColor': 'rgba(76, 175, 80, 0.1)'
+            },
+            {
+                'if': {'filter_query': '{Path} = "Training"'},
+                'backgroundColor': 'rgba(158, 158, 158, 0.1)'
             }
         ],
-        page_size=10,
+        page_size=15,
         style_table={'overflowX': 'auto'}
     )
     
     return html.Div([
-        html.H4("Monthly Cash Flow Analysis (With Attrition)", style={'textAlign': 'center', 'marginBottom': '20px'}),
+        html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
+        
+        # Provider explanation
+        provider_explanation,
         
         # IRR Summary
         html.Div([
             html.H5("Internal Rate of Return (IRR)", style={'textAlign': 'center', 'marginBottom': '10px'}),
             html.Div([
-                html.P("Annual IRR:", style={'fontWeight': 'bold', 'display': 'inline-block', 'marginRight': '10px'}),
+                html.P("Annual IRR (weighted average of both paths):", style={'fontWeight': 'bold', 'display': 'inline-block', 'marginRight': '10px'}),
                 html.P(f"{irr:.1f}%" if irr is not None else "N/A",
                       style={'display': 'inline-block', 'color': 'green' if irr and irr > 0 else 'red'})
             ], style={'textAlign': 'center', 'marginBottom': '20px'})
@@ -1585,15 +2476,17 @@ def update_monthly_cashflow_content(results):
         
         # Cash Flow Chart
         html.Div([
-            html.H5("Cash Flow Visualization", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            html.H5("Cash Flow by Provider Path", style={'textAlign': 'center', 'marginBottom': '15px'}),
             dcc.Graph(figure=cash_flow_fig, style={'marginBottom': '30px'})
         ]),
         
         # Monthly Cash Flow Table
         html.Div([
             html.H5("Monthly Cash Flow Details", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            html.P("This table shows the aggregated monthly cash flows accounting for student attrition:",
-                  style={'marginBottom': '15px'}),
+            html.P([
+                "This table shows the monthly cash flows for the training path and each provider path (Disney and Costa). ",
+                "Note that students follow either the Disney path (30%) or the Costa path (70%) after training, not both."
+            ], style={'marginBottom': '15px'}),
             monthly_cashflow_table
         ])
     ])

@@ -1,4 +1,8 @@
 import multiprocessing
+import app
+
+# Explicitly set the application
+wsgi_app = "app:server"
 
 # Gunicorn configuration for Render deployment
 bind = "0.0.0.0:10000"  # Render uses port 10000 by default

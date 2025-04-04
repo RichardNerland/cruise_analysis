@@ -11,13 +11,22 @@ class CruiseCareerSequence:
     def __init__(
         self,
         state_configs: List[StateConfig],
-        random_seed: Optional[int] = None
+        random_seed: Optional[int] = None,
+        disney_allocation_pct: float = 30.0,
+        costa_allocation_pct: float = 70.0
     ):
         if random_seed is not None:
             np.random.seed(random_seed)
             
         self.state_configs = state_configs
         self.num_states = len(state_configs)
+        
+        # Provider allocation
+        self.disney_allocation_pct = disney_allocation_pct
+        self.costa_allocation_pct = costa_allocation_pct
+        
+        # Selected provider path
+        self.selected_provider = None
         
         # Current state tracking
         self.current_state_index = 0
@@ -26,7 +35,6 @@ class CruiseCareerSequence:
         self.total_training_costs = 0.0
         self.total_payments = 0.0
         self.current_state_salary = 0.0  # Salary for the entire state
-        self.last_cruise_salary = 0.0  # Track last cruise salary for increases
         
         # History tracking
         self.state_salaries = []
@@ -57,9 +65,28 @@ class CruiseCareerSequence:
         if self._check_dropout():
             self.dropout = True
             return  # Exit early if dropout occurs
-
+            
+        # If we completed the advanced training, assign to provider
+        current_state_name = config.name
+        if current_state_name == "Transportation and placement" and not self.selected_provider:
+            self._select_provider()
+            
         # Calculate salary for this state immediately after entering (if not dropped out)
         self.current_state_salary = self._calculate_state_salary()
+
+    def _select_provider(self) -> None:
+        """Select which provider (Disney or Costa) the student will be assigned to"""
+        if np.random.random() * 100 < self.disney_allocation_pct:
+            self.selected_provider = "Disney"
+        else:
+            self.selected_provider = "Costa"
+        
+        # Skip to the first state for this provider
+        # We need to find the index of the first cruise state for this provider
+        for i, state in enumerate(self.state_configs):
+            if state.provider == self.selected_provider and "Cruise 1" in state.name:
+                self.current_state_index = i
+                break
 
     def _calculate_state_salary(self) -> float:
         """Calculate salary for the entire state based on current state"""
@@ -69,23 +96,17 @@ class CruiseCareerSequence:
         config = self.state_configs[self.current_state_index]
         
         # No salary during training states or breaks
-        if config.base_salary == 0 and ("Training" in config.name or "Transportation and placement" in config.name or "Break" in config.name):
+        if "Training" in config.name or "Transportation and placement" in config.name or "Break" in config.name:
             return 0.0
             
-        # First cruise - use base salary with variation
-        if "First Cruise" in config.name or self.last_cruise_salary == 0:
+        # For cruise states, use the configured base salary with variation
+        if "Cruise" in config.name:
             variation_amount = config.base_salary * (config.salary_variation_pct / 100)
-            new_salary = np.random.normal(config.base_salary, variation_amount)
-            self.last_cruise_salary = new_salary
-            return max(0, new_salary)
+            salary = np.random.normal(config.base_salary, variation_amount)
+            return max(0, salary)
             
-        # Subsequent cruises - increase from last salary
-        increase = self.last_cruise_salary * (config.salary_increase_pct / 100)
-        variation_amount = increase * (config.salary_variation_pct / 100)
-        new_salary = self.last_cruise_salary + np.random.normal(increase, variation_amount)
-        self.last_cruise_salary = new_salary
-            
-        return max(0, self.last_cruise_salary)
+        # Default case
+        return 0.0
 
     def _check_dropout(self) -> bool:
         """Check if person drops out in current state"""
@@ -120,7 +141,34 @@ class CruiseCareerSequence:
         
         # Complete the current state and move to the next
         self.completed_states.append(self.current_state_index)
-        self.current_state_index += 1
+        
+        # Advance to next state, but only if it belongs to the same provider or it's early training
+        next_index = self.current_state_index + 1
+        if next_index < self.num_states:
+            next_config = self.state_configs[next_index]
+            current_config = self.state_configs[self.current_state_index]
+            
+            # If we're still in training, move to the next state
+            if not self.selected_provider:
+                self.current_state_index = next_index
+            # If we have a provider, only move to states for that provider
+            elif next_config.provider == self.selected_provider or next_config.provider == "":
+                self.current_state_index = next_index
+            # Otherwise, find the next state for this provider
+            else:
+                found_next = False
+                for i in range(next_index, self.num_states):
+                    if self.state_configs[i].provider == self.selected_provider:
+                        self.current_state_index = i
+                        found_next = True
+                        break
+                # If no next state found, we're done
+                if not found_next:
+                    self.completed = True
+        else:
+            # No more states
+            self.completed = True
+            
         self._enter_new_state()
         
         # Create a summary based on the state we just completed
@@ -136,7 +184,8 @@ class CruiseCareerSequence:
             'net_cash_flow': self.total_payments - self.total_training_costs,
             'dropout': self.dropout,
             'completed': self.completed,
-            'completed_states': self.completed_states.copy()
+            'completed_states': self.completed_states.copy(),
+            'provider': self.selected_provider
         }
 
     def _get_state_summary(self) -> Dict[str, Any]:
@@ -175,7 +224,8 @@ class CruiseCareerSequence:
             'net_cash_flow': self.total_payments - self.total_training_costs,
             'dropout': self.dropout,
             'completed': self.completed,
-            'completed_states': self.completed_states.copy()
+            'completed_states': self.completed_states.copy(),
+            'provider': self.selected_provider
         }
 
 
@@ -246,7 +296,8 @@ def create_default_state_configs(num_cruises: int = 3) -> List[StateConfig]:
 def run_simulation(
     num_cruises: int = 3,
     state_configs: Optional[List[StateConfig]] = None,
-    random_seed: Optional[int] = None
+    random_seed: Optional[int] = None,
+    simulation_config: Optional[SimulationConfig] = None
 ) -> Dict[str, Any]:
     """Run a simulation with given state configurations
     
@@ -254,14 +305,24 @@ def run_simulation(
         num_cruises: Number of cruises to simulate (default: 3)
         state_configs: Custom state configurations (if None, uses default configs)
         random_seed: Optional random seed for reproducibility
+        simulation_config: Optional simulation configuration to use
     """
-    
-    if state_configs is None:
-        state_configs = create_default_state_configs(num_cruises)
+    if simulation_config:
+        if state_configs is None:
+            state_configs = simulation_config.create_state_configs()
+        disney_allocation = simulation_config.disney_allocation_pct
+        costa_allocation = simulation_config.costa_allocation_pct
+    else:
+        if state_configs is None:
+            state_configs = create_default_state_configs(num_cruises)
+        disney_allocation = 30.0  # Default allocations
+        costa_allocation = 70.0
     
     sequence = CruiseCareerSequence(
         state_configs=state_configs,
-        random_seed=random_seed
+        random_seed=random_seed,
+        disney_allocation_pct=disney_allocation,
+        costa_allocation_pct=costa_allocation
     )
     
     state_results = []
@@ -300,7 +361,8 @@ def run_simulation(
         'training_costs_by_state': sequence.training_costs_by_state,
         'state_results': state_results,
         'state_salaries': sequence.state_salaries,
-        'state_payments': sequence.state_payments
+        'state_payments': sequence.state_payments,
+        'selected_provider': sequence.selected_provider
     }
 
 
@@ -586,7 +648,7 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     # Print state config debug info
     print("\nDEBUG - State Configuration:")
     for i, state in enumerate(state_configs):
-        print(f"State {i} ({state.name}): payment_fraction={state.payment_fraction}, base_salary={state.base_salary}")
+        print(f"State {i} ({state.name}): payment_fraction={state.payment_fraction}, base_salary={state.base_salary}, provider={state.provider}")
     
     # Initialize state-specific tracking
     state_salary_sums = {i: 0.0 for i in range(num_states)}
@@ -595,6 +657,9 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     state_total_costs = {i: 0.0 for i in range(num_states)}
     state_total_payments = {i: 0.0 for i in range(num_states)}
     state_entry_counts = {i: 0 for i in range(num_states)} # Track how many simulations entered each state
+    
+    # Provider tracking
+    provider_counts = {"Disney": 0, "Costa": 0, None: 0}
     
     # Add debug counters for payment tracking
     debug_payment_counts = {i: 0 for i in range(num_states)}
@@ -606,13 +671,18 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         
         result = run_simulation(
             state_configs=state_configs,
-            random_seed=seed
+            random_seed=seed,
+            simulation_config=config
         )
         all_results.append(result)
         
+        # Track selected provider
+        provider = result.get('selected_provider')
+        provider_counts[provider] = provider_counts.get(provider, 0) + 1
+        
         # Debug output for first few simulations
         if i < 3:  # Print debug info for first 3 students
-            print(f"\nDEBUG - Student {i} Payment Details:")
+            print(f"\nDEBUG - Student {i} Payment Details (Provider: {provider}):")
             for j, state in enumerate(result['state_results']):
                 state_idx = state['state_index']
                 if state_idx < num_states:
@@ -641,7 +711,15 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
                 if state_payment > 0:
                     debug_payment_counts[state_idx] += 1
                     debug_payment_sums[state_idx] += state_payment
-
+    
+    # Print provider distribution
+    total_students = sum(provider_counts.values())
+    print("\nProvider Distribution:")
+    for provider, count in provider_counts.items():
+        if provider:  # Skip None provider
+            percent = (count / total_students) * 100
+            print(f"{provider}: {count} students ({percent:.1f}%)")
+    
     # Print debug payment info
     print("\nDEBUG - Payment Tracking:")
     for i in range(num_states):
@@ -692,6 +770,7 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
                        
         state_metrics[state_idx] = {
             'name': state_configs[state_idx].name,
+            'provider': state_configs[state_idx].provider if hasattr(state_configs[state_idx], 'provider') else "",
             'avg_state_salary': avg_state_salary,
             'avg_payment': avg_payment,
             'expected_payment': expected_payment, # Add this for debugging
@@ -709,7 +788,8 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
             'total_payments': r['total_payments'],
             'net_cash_flow': r['net_cash_flow'],
             'final_state_index': r['final_state_index'],
-            'monthly_irr': calculate_monthly_irr(r)  # Calculate monthly IRR for each simulation
+            'monthly_irr': calculate_monthly_irr(r),  # Calculate monthly IRR for each simulation
+            'provider': r.get('selected_provider')
         }
         for r in all_results
     ])
@@ -720,6 +800,21 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     # Calculate average monthly-based IRR, handling None values
     monthly_irr_values = [val for val in df['monthly_irr'] if val is not None]
     avg_monthly_irr = sum(monthly_irr_values) / len(monthly_irr_values) if monthly_irr_values else None
+    
+    # Calculate provider-specific metrics
+    provider_metrics = {}
+    for provider in ['Disney', 'Costa']:
+        provider_df = df[df['provider'] == provider]
+        if len(provider_df) > 0:
+            provider_roi = provider_df['net_cash_flow'] / provider_df['total_training_costs']
+            provider_metrics[provider] = {
+                'count': len(provider_df),
+                'avg_training_cost': provider_df['total_training_costs'].mean(),
+                'avg_total_payments': provider_df['total_payments'].mean(),
+                'avg_net_cash_flow': provider_df['net_cash_flow'].mean(),
+                'avg_roi': provider_roi.mean() * 100,
+                'roi_std': provider_roi.std() * 100
+            }
     
     # Print state total payments for debugging
     print("\nDEBUG - Final State Total Payments:")
@@ -744,7 +839,9 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         'state_metrics': state_metrics,
         'state_total_costs': state_total_costs,
         'state_total_payments': state_total_payments,
-        'state_entry_counts': state_entry_counts
+        'state_entry_counts': state_entry_counts,
+        'provider_metrics': provider_metrics,
+        'provider_distribution': {provider: count for provider, count in provider_counts.items() if provider}
     }
 
 def print_simulation_results(results: Dict, scenario_name: str = "Default") -> None:
@@ -773,19 +870,39 @@ def print_simulation_results(results: Dict, scenario_name: str = "Default") -> N
     print(f"ROI 10th Percentile: {results['roi_10th']:.1f}%")
     print(f"ROI 90th Percentile: {results['roi_90th']:.1f}%")
     
+    # Print provider-specific metrics
+    if 'provider_metrics' in results:
+        print("\nProvider-Specific Results:")
+        print("--------------------------")
+        for provider, metrics in results['provider_metrics'].items():
+            print(f"\n{provider} ({metrics['count']} students):")
+            print(f"  Avg Training Cost: ${metrics['avg_training_cost']:,.2f}")
+            print(f"  Avg Total Payments: ${metrics['avg_total_payments']:,.2f}")
+            print(f"  Avg Net Cash Flow: ${metrics['avg_net_cash_flow']:,.2f}")
+            print(f"  Avg ROI: {metrics['avg_roi']:.1f}%")
+            print(f"  ROI Standard Deviation: {metrics['roi_std']:.1f}%")
+    
+    # Print provider distribution
+    if 'provider_distribution' in results:
+        print("\nProvider Distribution:")
+        total = sum(results['provider_distribution'].values())
+        for provider, count in results['provider_distribution'].items():
+            print(f"{provider}: {count} students ({count/total*100:.1f}%)")
+    
     print("\nState-by-State Analysis:")
     print("------------------------")
-    print(f"{'State':<20} {'Entries':>8} {'State Salary':>15} {'Avg Payment':>15} {'Expected':>15} {'Total Payments':>20}")
-    print("-" * 95)
+    print(f"{'State':<25} {'Provider':<10} {'Entries':>8} {'State Salary':>15} {'Avg Payment':>15} {'Expected':>15} {'Total Payments':>20}")
+    print("-" * 110)
     
     for state_idx, metrics in results['state_metrics'].items():
         # Ensure state name exists before printing
         state_name = metrics.get('name', f'State {state_idx}')
+        provider = metrics.get('provider', "")
         entries = results['state_entry_counts'].get(state_idx, 0)
         total_payments = results['state_total_payments'].get(state_idx, 0.0)
         expected_payment = metrics.get('expected_payment', 0.0)
         
-        print(f"{state_name:<20} {entries:>8} ${metrics['avg_state_salary']:>14,.2f} ${metrics['avg_payment']:>14,.2f} ${expected_payment:>14,.2f} ${total_payments:>19,.2f}")
+        print(f"{state_name:<25} {provider:<10} {entries:>8} ${metrics['avg_state_salary']:>14,.2f} ${metrics['avg_payment']:>14,.2f} ${expected_payment:>14,.2f} ${total_payments:>19,.2f}")
     
     print("\nFinal State Distribution:")
     total_students = sum(results['state_distribution'].values())

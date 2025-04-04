@@ -12,6 +12,7 @@ class StateConfig:
     duration_months: int       # How long this state lasts
     payment_fraction: float    # Fraction of salary paid as ISA/fee
     name: str = ""             # Name of this state for reporting
+    provider: str = ""         # Cruise provider (Disney, Costa, etc.)
 
 @dataclass
 class SimulationConfig:
@@ -22,35 +23,55 @@ class SimulationConfig:
     random_seed: Optional[int] = None
     
     # Training Config
-    basic_training_cost: float = 1500
-    basic_training_dropout_rate: float = 0.10  # 10% chance of dropping out during Training
-    basic_training_duration: int = 3
+    basic_training_cost: float = 3000
+    basic_training_dropout_rate: float = 0.10  # 10% chance of failing the training
+    basic_training_duration: int = 8
+    
+    # Training offer stage Config (new)
+    include_offer_stage: bool = True
+    no_offer_rate: float = 0.30  # 30% chance of not receiving an offer
+    offer_stage_duration: int = 1  # 1 month duration
+    
+    # Early contract termination stage Config (new)
+    include_early_termination: bool = True
+    early_termination_rate: float = 0.10  # 10% chance of early termination
+    early_termination_duration: int = 1  # 1 month duration
     
     # Transportation and placement Config (optional)
     include_advanced_training: bool = True
-    advanced_training_cost: float = 500
-    advanced_training_dropout_rate: float = 0.15  # 5% chance of dropping out during Transportation and placement
+    advanced_training_cost: float = 0
+    advanced_training_dropout_rate: float = 0.1  # 5% chance of dropping out during Transportation and placement
     advanced_training_duration: int = 3
     
-    # First Cruise Config
-    first_cruise_base_salary: float = 5000
-    first_cruise_dropout_rate: float = 0.03  # 3% chance of dropping out during First Cruise
-    first_cruise_salary_variation: float = 6.0  # ±6%
-    first_cruise_duration: int = 8
-    first_cruise_payment_fraction: float = 0.14  # 14%
+    # Provider allocation after training
+    disney_allocation_pct: float = 30.0  # 30% go to Disney
+    costa_allocation_pct: float = 70.0   # 70% go to Costa
+    
+    # Disney Cruise Config
+    disney_first_cruise_salary: float = 5100
+    disney_second_cruise_salary: float = 5400
+    disney_third_cruise_salary: float = 18000
+    disney_cruise_duration: int = 6
+    disney_cruise_dropout_rate: float = 0.03
+    disney_cruise_salary_variation: float = 5.0
+    disney_cruise_payment_fraction: float = 0.14
+    
+    # Costa Cruise Config
+    costa_first_cruise_salary: float = 5100
+    costa_second_cruise_salary: float = 5850
+    costa_third_cruise_salary: float = 9000
+    costa_cruise_duration: int = 7
+    costa_cruise_dropout_rate: float = 0.03
+    costa_cruise_salary_variation: float = 5.0
+    costa_cruise_payment_fraction: float = 0.14
     
     # Break Config
     include_breaks: bool = True  # Whether to include breaks between cruises
     break_duration: int = 2  # Default 2 months for breaks
     break_dropout_rate: float = 0.0  # Default 0% chance of dropping out during breaks
     
-    # Subsequent Cruises Config
-    num_additional_cruises: int = 4  # Number of cruises after first cruise
-    subsequent_cruise_dropout_rate: float = 0.03  # 3% chance of dropping out during each subsequent cruise
-    subsequent_cruise_salary_increase: float = 10.0  # 10% increase per cruise
-    subsequent_cruise_salary_variation: float = 5.0  # ±5%
-    subsequent_cruise_duration: int = 8
-    subsequent_cruise_payment_fraction: float = 0.14
+    # Cruise Count Config
+    num_cruises: int = 3  # Number of cruises per provider
 
     def create_state_configs(self) -> List[StateConfig]:
         """Create state configurations based on the current settings"""
@@ -70,6 +91,21 @@ class SimulationConfig:
             )
         )
         
+        # Add Offer Stage if enabled
+        if self.include_offer_stage:
+            states.append(
+                StateConfig(
+                    training_cost=0,  # No cost for this stage
+                    dropout_rate=self.no_offer_rate,
+                    base_salary=0,
+                    salary_increase_pct=0,
+                    salary_variation_pct=0,
+                    duration_months=self.offer_stage_duration,
+                    payment_fraction=0,
+                    name="Offer Stage"
+                )
+            )
+        
         # Add Transportation and placement if enabled
         if self.include_advanced_training:
             states.append(
@@ -85,55 +121,71 @@ class SimulationConfig:
                 )
             )
         
-        # Add First Cruise
-        states.append(
-            StateConfig(
-                training_cost=0,
-                dropout_rate=self.first_cruise_dropout_rate,
-                base_salary=self.first_cruise_base_salary,
-                salary_increase_pct=0,
-                salary_variation_pct=self.first_cruise_salary_variation,
-                duration_months=self.first_cruise_duration,
-                payment_fraction=self.first_cruise_payment_fraction,
-                name="First Cruise"
-            )
-        )
-        
-        # Add Break after First Cruise if breaks are enabled
-        if self.include_breaks:
+        # Add Early Termination Stage if enabled
+        if self.include_early_termination:
             states.append(
                 StateConfig(
-                    training_cost=0,
-                    dropout_rate=self.break_dropout_rate,
-                    base_salary=0,  # No salary during breaks
+                    training_cost=0,  # No cost for this stage
+                    dropout_rate=self.early_termination_rate,
+                    base_salary=0,
                     salary_increase_pct=0,
                     salary_variation_pct=0,
-                    duration_months=self.break_duration,
-                    payment_fraction=0,  # No payments during breaks
-                    name="Break 1"
+                    duration_months=self.early_termination_duration,
+                    payment_fraction=0,
+                    name="Early Termination Stage"
                 )
             )
         
-        # Add Subsequent Cruises with breaks in between if enabled
-        for i in range(self.num_additional_cruises):
-            cruise_number = i + 2  # +2 because first cruise is already added
+        # Now, we need to handle the provider-specific cruise sequences
+        # First generate Disney cruises
+        disney_states = self._create_provider_states(
+            provider="Disney",
+            salaries=[self.disney_first_cruise_salary, self.disney_second_cruise_salary, self.disney_third_cruise_salary],
+            duration=self.disney_cruise_duration,
+            dropout_rate=self.disney_cruise_dropout_rate,
+            salary_variation=self.disney_cruise_salary_variation,
+            payment_fraction=self.disney_cruise_payment_fraction
+        )
+        
+        # Then generate Costa cruises
+        costa_states = self._create_provider_states(
+            provider="Costa",
+            salaries=[self.costa_first_cruise_salary, self.costa_second_cruise_salary, self.costa_third_cruise_salary],
+            duration=self.costa_cruise_duration,
+            dropout_rate=self.costa_cruise_dropout_rate,
+            salary_variation=self.costa_cruise_salary_variation,
+            payment_fraction=self.costa_cruise_payment_fraction
+        )
+        
+        # Return combined state list - both providers will be included
+        # The actual provider selection will happen in the simulation logic
+        return states + disney_states + costa_states
+    
+    def _create_provider_states(self, provider: str, salaries: List[float], duration: int, 
+                               dropout_rate: float, salary_variation: float, payment_fraction: float) -> List[StateConfig]:
+        """Helper method to create cruise states for a specific provider"""
+        states = []
+        
+        for i, salary in enumerate(salaries[:self.num_cruises]):
+            cruise_number = i + 1
             
             # Add the cruise
             states.append(
                 StateConfig(
                     training_cost=0,
-                    dropout_rate=self.subsequent_cruise_dropout_rate,
-                    base_salary=0,
-                    salary_increase_pct=self.subsequent_cruise_salary_increase,
-                    salary_variation_pct=self.subsequent_cruise_salary_variation,
-                    duration_months=self.subsequent_cruise_duration,
-                    payment_fraction=self.subsequent_cruise_payment_fraction,
-                    name=f"Cruise {cruise_number}"
+                    dropout_rate=dropout_rate,
+                    base_salary=salary,
+                    salary_increase_pct=0,  # Not using percentage increase anymore
+                    salary_variation_pct=salary_variation,
+                    duration_months=duration,
+                    payment_fraction=payment_fraction,
+                    name=f"{provider} Cruise {cruise_number}",
+                    provider=provider
                 )
             )
             
             # Add break after cruise if breaks are enabled and it's not the last cruise
-            if self.include_breaks and i < self.num_additional_cruises - 1:
+            if self.include_breaks and i < len(salaries) - 1:
                 states.append(
                     StateConfig(
                         training_cost=0,
@@ -143,74 +195,103 @@ class SimulationConfig:
                         salary_variation_pct=0,
                         duration_months=self.break_duration,
                         payment_fraction=0,  # No payments during breaks
-                        name=f"Break {cruise_number}"
+                        name=f"{provider} Break {cruise_number}",
+                        provider=provider
                     )
                 )
         
         return states
 
-# Default simulation configuration with moderate assumptions
+# Default simulation configuration with the new cruise provider model
 DEFAULT_CONFIG = SimulationConfig()
 
-# Baseline configuration - similar to default but with slightly different parameters
+# Baseline configuration - updated with provider-specific cruise details
 BASELINE_CONFIG = SimulationConfig(
     basic_training_cost=1500,
     basic_training_dropout_rate=0.10,
     basic_training_duration=6,
+    include_offer_stage=True,
+    no_offer_rate=0.30,
+    offer_stage_duration=1,
+    include_early_termination=True,
+    early_termination_rate=0.10,
+    early_termination_duration=1,
     advanced_training_cost=500,
     advanced_training_dropout_rate=0.15,
     advanced_training_duration=5,
-    first_cruise_base_salary=5000,
-    first_cruise_dropout_rate=0.03,
-    first_cruise_salary_variation=6.0,
-    first_cruise_duration=6,
-    first_cruise_payment_fraction=0.14,
-    num_additional_cruises=4,
-    subsequent_cruise_dropout_rate=0.03,
-    subsequent_cruise_salary_increase=10.0,
-    subsequent_cruise_salary_variation=5.0,
-    subsequent_cruise_duration=6,
-    subsequent_cruise_payment_fraction=0.14
+    disney_allocation_pct=30.0,
+    costa_allocation_pct=70.0,
+    disney_first_cruise_salary=5100,
+    disney_second_cruise_salary=5400,
+    disney_third_cruise_salary=18000,
+    disney_cruise_duration=6,
+    costa_first_cruise_salary=5100,
+    costa_second_cruise_salary=5850,
+    costa_third_cruise_salary=9000,
+    costa_cruise_duration=7,
+    include_breaks=True,
+    break_duration=2,
+    num_cruises=3
 )
 
-# Optimistic configuration - lower dropout rates, higher salaries
+# Optimistic configuration - lower dropout rates, slightly higher salaries
 OPTIMISTIC_CONFIG = SimulationConfig(
     basic_training_cost=1500,
     basic_training_dropout_rate=0.05,  # Lower dropout rate
     basic_training_duration=6,
+    include_offer_stage=True,
+    no_offer_rate=0.20,  # Lower no-offer rate
+    offer_stage_duration=1,
+    include_early_termination=True,
+    early_termination_rate=0.05,  # Lower early termination rate
+    early_termination_duration=1,
     advanced_training_cost=500,
     advanced_training_dropout_rate=0.08,  # Lower dropout rate
     advanced_training_duration=5,
-    first_cruise_base_salary=5000,  # Same
-    first_cruise_dropout_rate=0.02,  # Lower dropout rate
-    first_cruise_salary_variation=4.0,  # Lower variation
-    first_cruise_duration=6,
-    first_cruise_payment_fraction=0.15,  # Higher payment fraction
-    num_additional_cruises=4,  # More cruises
-    subsequent_cruise_dropout_rate=0.02,  # Lower dropout rate
-    subsequent_cruise_salary_increase=15.0,  # Higher salary increase
-    subsequent_cruise_salary_variation=4.0,  # Lower variation
-    subsequent_cruise_duration=6,
-    subsequent_cruise_payment_fraction=0.15  # Higher payment fraction
+    disney_allocation_pct=30.0,
+    costa_allocation_pct=70.0,
+    disney_first_cruise_salary=5100,
+    disney_second_cruise_salary=5500,  # Slightly higher
+    disney_third_cruise_salary=18500,  # Slightly higher
+    disney_cruise_duration=6,
+    disney_cruise_dropout_rate=0.02,  # Lower dropout rate
+    costa_first_cruise_salary=5100,
+    costa_second_cruise_salary=5900,  # Slightly higher
+    costa_third_cruise_salary=9200,   # Slightly higher
+    costa_cruise_duration=7,
+    costa_cruise_dropout_rate=0.02,   # Lower dropout rate
+    include_breaks=True,
+    break_duration=2,
+    num_cruises=3
 )
 
-# Pessimistic configuration - higher dropout rates, lower salaries
+# Pessimistic configuration - higher dropout rates, slightly lower salaries
 PESSIMISTIC_CONFIG = SimulationConfig(
     basic_training_cost=1500,
     basic_training_dropout_rate=0.15,  # Higher dropout rate
     basic_training_duration=6,
+    include_offer_stage=True,
+    no_offer_rate=0.40,  # Higher no-offer rate
+    offer_stage_duration=1,
+    include_early_termination=True,
+    early_termination_rate=0.15,  # Higher early termination rate
+    early_termination_duration=1,
     advanced_training_cost=500,
     advanced_training_dropout_rate=0.20,  # Higher dropout rate
     advanced_training_duration=5,
-    first_cruise_base_salary=4000,  # Lower base salary
-    first_cruise_dropout_rate=0.05,  # Higher dropout rate
-    first_cruise_salary_variation=8.0,  # Higher variation
-    first_cruise_duration=6,
-    first_cruise_payment_fraction=0.12,  # Lower payment fraction
-    num_additional_cruises=4,  # Fewer cruises
-    subsequent_cruise_dropout_rate=0.04,  # Higher dropout rate
-    subsequent_cruise_salary_increase=8.0,  # Lower salary increase
-    subsequent_cruise_salary_variation=7.0,  # Higher variation
-    subsequent_cruise_duration=6,
-    subsequent_cruise_payment_fraction=0.12  # Lower payment fraction
+    disney_allocation_pct=30.0,
+    costa_allocation_pct=70.0,
+    disney_first_cruise_salary=5000,  # Slightly lower
+    disney_second_cruise_salary=5300,  # Slightly lower
+    disney_third_cruise_salary=17500,  # Slightly lower
+    disney_cruise_duration=6,
+    disney_cruise_dropout_rate=0.04,  # Higher dropout rate
+    costa_first_cruise_salary=5000,   # Slightly lower
+    costa_second_cruise_salary=5750,  # Slightly lower
+    costa_third_cruise_salary=8800,   # Slightly lower
+    costa_cruise_duration=7,
+    costa_cruise_dropout_rate=0.04,   # Higher dropout rate
+    include_breaks=True,
+    break_duration=2,
+    num_cruises=3
 ) 
