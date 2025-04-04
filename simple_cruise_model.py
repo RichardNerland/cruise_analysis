@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import numpy_financial as npf  # Add import for numpy-financial
 from typing import List, Dict, Union, Optional, Tuple, Any
 from dataclasses import dataclass
 from simulation_config import StateConfig, SimulationConfig, DEFAULT_CONFIG, BASELINE_CONFIG, OPTIMISTIC_CONFIG, PESSIMISTIC_CONFIG
@@ -68,7 +69,7 @@ class CruiseCareerSequence:
         config = self.state_configs[self.current_state_index]
         
         # No salary during training states
-        if config.base_salary == 0 and "Training" in config.name:
+        if config.base_salary == 0 and ("Training" in config.name or "Transportation and placement" in config.name):
             return 0.0
             
         # First cruise - use base salary with variation
@@ -303,6 +304,85 @@ def run_simulation(
     }
 
 
+def calculate_monthly_irr(results: Dict[str, Any]) -> Optional[float]:
+    """Calculate the IRR (Internal Rate of Return) based on monthly cash flows
+    
+    Args:
+        results: Dictionary containing simulation results
+        
+    Returns:
+        Monthly IRR as a percentage (or None if calculation not possible)
+    """
+    # Extract relevant data
+    state_results = results.get('state_results', [])
+    
+    if not state_results:
+        return None
+    
+    # Create a list to store monthly cash flows
+    monthly_cash_flows = []
+    
+    # Initial cash flow is negative (training cost)
+    for state_idx, state_result in enumerate(state_results):
+        state_name = state_result.get('state_name', '')
+        state_duration = state_result.get('state_duration', 0)
+        state_payment = state_result.get('state_payment', 0)
+        
+        # Skip states with no duration
+        if state_duration <= 0:
+            continue
+        
+        # For training states, add full cost as upfront payment in first month
+        if "Training" in state_name or "Transportation and placement" in state_name:
+            training_cost = state_result.get('total_training_costs', 0) - (
+                state_results[state_idx-1].get('total_training_costs', 0) if state_idx > 0 else 0
+            )
+            
+            if training_cost > 0:
+                # Add training cost as negative cash flow at start of state
+                monthly_cash_flows.append(-training_cost)
+                
+                # Add 0 cash flow for remaining months of training
+                monthly_cash_flows.extend([0] * (state_duration - 1))
+        else:
+            # For cruise states, distribute payments evenly across months
+            monthly_payment = state_payment / state_duration if state_duration > 0 else 0
+            monthly_cash_flows.extend([monthly_payment] * state_duration)
+    
+    # If there are no cash flows or only positive/negative, IRR cannot be calculated
+    if not monthly_cash_flows:
+        return None
+    
+    if all(cf <= 0 for cf in monthly_cash_flows):
+        return None
+    
+    if all(cf >= 0 for cf in monthly_cash_flows):
+        return None
+    
+    try:
+        # Calculate IRR using numpy's financial function
+        cash_flow_array = np.array(monthly_cash_flows)
+        
+        # Check if the array has both positive and negative values
+        has_positive = any(cf > 0 for cf in cash_flow_array)
+        has_negative = any(cf < 0 for cf in cash_flow_array)
+        
+        if not (has_positive and has_negative):
+            return None
+        
+        # Calculate IRR (returns monthly rate as decimal) using numpy-financial
+        monthly_irr = npf.irr(cash_flow_array)
+        
+        # Convert to annual IRR and to percentage
+        annual_irr = ((1 + monthly_irr) ** 12 - 1) * 100
+        
+        return annual_irr
+    except Exception as e:
+        print(f"IRR calculation error: {str(e)}")
+        # IRR calculation might fail for various reasons
+        return None
+
+
 def calculate_summary_metrics(results: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate comprehensive summary metrics from simulation results"""
     state_salaries = results['state_salaries']
@@ -329,13 +409,16 @@ def calculate_summary_metrics(results: Dict[str, Any]) -> Dict[str, Any]:
     breakeven_states = np.where(cumulative_payments >= total_training_costs)[0]
     metrics['breakeven_state'] = breakeven_states[0] + 1 if len(breakeven_states) > 0 else None
     
-    # Calculate simple IRR (annualized return)
+    # Calculate simple IRR (annualized return) using original method
     if duration_months > 0 and total_training_costs > 0:
         years = duration_months / 12
         irr = (np.power(total_payments / total_training_costs, 1/years) - 1) * 100 if total_payments > 0 else -100
         metrics['annual_irr'] = irr
     else:
         metrics['annual_irr'] = None
+    
+    # Calculate the more accurate monthly-based IRR
+    metrics['monthly_based_irr'] = calculate_monthly_irr(results)
     
     # Calculate repayment rate (percentage of training costs recovered)
     metrics['repayment_rate'] = (total_payments / total_training_costs * 100 
@@ -382,7 +465,9 @@ def print_simulation_summary(results: Dict[str, Any]) -> None:
         print("Breakeven: Not reached")
     print(f"Repayment Rate: {metrics['repayment_rate']:.1f}%")
     if metrics['annual_irr'] is not None:
-        print(f"Annual IRR: {metrics['annual_irr']:.1f}%")
+        print(f"Simple Annual IRR: {metrics['annual_irr']:.1f}%")
+    if metrics['monthly_based_irr'] is not None:
+        print(f"Monthly-Based Annual IRR: {metrics['monthly_based_irr']:.1f}%")
     
     # Averages
     print("\nState Averages:")
@@ -620,13 +705,18 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
             'total_training_costs': r['total_training_costs'],
             'total_payments': r['total_payments'],
             'net_cash_flow': r['net_cash_flow'],
-            'final_state_index': r['final_state_index']
+            'final_state_index': r['final_state_index'],
+            'monthly_irr': calculate_monthly_irr(r)  # Calculate monthly IRR for each simulation
         }
         for r in all_results
     ])
     
     # Calculate key metrics
     roi = df['net_cash_flow'] / df['total_training_costs']
+    
+    # Calculate average monthly-based IRR, handling None values
+    monthly_irr_values = [val for val in df['monthly_irr'] if val is not None]
+    avg_monthly_irr = sum(monthly_irr_values) / len(monthly_irr_values) if monthly_irr_values else None
     
     # Print state total payments for debugging
     print("\nDEBUG - Final State Total Payments:")
@@ -645,6 +735,8 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         'roi_std': roi.std() * 100,
         'roi_10th': roi.quantile(0.1) * 100,
         'roi_90th': roi.quantile(0.9) * 100,
+        'avg_annual_irr': df['monthly_irr'].mean(),  # Simple mean (may be None)
+        'avg_monthly_irr': avg_monthly_irr,  # Properly calculated average of non-None values
         'state_distribution': df['final_state_index'].value_counts().sort_index().to_dict(),
         'state_metrics': state_metrics,
         'state_total_costs': state_total_costs,

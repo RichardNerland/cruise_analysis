@@ -40,6 +40,11 @@ class SimulationConfig:
     first_cruise_duration: int = 8
     first_cruise_payment_fraction: float = 0.14  # 14%
     
+    # Break Config
+    include_breaks: bool = True  # Whether to include breaks between cruises
+    break_duration: int = 2  # Default 2 months for breaks
+    break_dropout_rate: float = 0.0  # Default 0% chance of dropping out during breaks
+    
     # Subsequent Cruises Config
     num_additional_cruises: int = 4  # Number of cruises after first cruise
     subsequent_cruise_dropout_rate: float = 0.03  # 3% chance of dropping out during each subsequent cruise
@@ -95,8 +100,26 @@ class SimulationConfig:
             )
         )
         
-        # Add Subsequent Cruises
+        # Add Break after First Cruise if breaks are enabled
+        if self.include_breaks:
+            states.append(
+                StateConfig(
+                    training_cost=0,
+                    dropout_rate=self.break_dropout_rate,
+                    base_salary=0,  # No salary during breaks
+                    salary_increase_pct=0,
+                    salary_variation_pct=0,
+                    duration_months=self.break_duration,
+                    payment_fraction=0,  # No payments during breaks
+                    name="Break 1"
+                )
+            )
+        
+        # Add Subsequent Cruises with breaks in between if enabled
         for i in range(self.num_additional_cruises):
+            cruise_number = i + 2  # +2 because first cruise is already added
+            
+            # Add the cruise
             states.append(
                 StateConfig(
                     training_cost=0,
@@ -106,9 +129,24 @@ class SimulationConfig:
                     salary_variation_pct=self.subsequent_cruise_salary_variation,
                     duration_months=self.subsequent_cruise_duration,
                     payment_fraction=self.subsequent_cruise_payment_fraction,
-                    name=f"Cruise {i+2}"  # +2 because first cruise is already added
+                    name=f"Cruise {cruise_number}"
                 )
             )
+            
+            # Add break after cruise if breaks are enabled and it's not the last cruise
+            if self.include_breaks and i < self.num_additional_cruises - 1:
+                states.append(
+                    StateConfig(
+                        training_cost=0,
+                        dropout_rate=self.break_dropout_rate,
+                        base_salary=0,  # No salary during breaks
+                        salary_increase_pct=0,
+                        salary_variation_pct=0,
+                        duration_months=self.break_duration,
+                        payment_fraction=0,  # No payments during breaks
+                        name=f"Break {cruise_number}"
+                    )
+                )
         
         return states
 
@@ -125,6 +163,11 @@ BASELINE_CONFIG = SimulationConfig(
     first_cruise_base_salary=5000,       # $5000 starting salary
     first_cruise_dropout_rate=0.03,      # 3% dropout in first cruise
     first_cruise_salary_variation=6.0,    # ±6% salary variation
+    
+    # Break parameters
+    include_breaks=True,                 # Include breaks between cruises
+    break_duration=2,                    # 2 months duration for breaks
+    break_dropout_rate=0.0,              # 0% dropout during breaks
     
     # Subsequent cruise parameters
     num_additional_cruises=3,            # Total of 4 cruises
@@ -147,6 +190,11 @@ OPTIMISTIC_CONFIG = SimulationConfig(
     first_cruise_dropout_rate=0.02,      # Lower dropout rate
     first_cruise_salary_variation=5.0,    # Less salary variation
     
+    # Break parameters
+    include_breaks=True,                 # Include breaks between cruises
+    break_duration=2,                    # 2 months duration for breaks
+    break_dropout_rate=0.0,              # 0% dropout during breaks
+    
     # Subsequent cruise parameters
     num_additional_cruises=4,            # More cruises
     subsequent_cruise_dropout_rate=0.02,  # Lower dropout rate
@@ -167,6 +215,11 @@ PESSIMISTIC_CONFIG = SimulationConfig(
     first_cruise_base_salary=4500,       # Lower starting salary
     first_cruise_dropout_rate=0.05,      # Higher dropout rate
     first_cruise_salary_variation=8.0,    # More salary variation
+    
+    # Break parameters
+    include_breaks=True,                 # Include breaks between cruises
+    break_duration=2,                    # 2 months duration for breaks
+    break_dropout_rate=0.0,              # 0% dropout during breaks
     
     # Subsequent cruise parameters
     num_additional_cruises=2,            # Fewer cruises

@@ -143,49 +143,6 @@ app.layout = html.Div([
                     html.Div([
                         html.H3("Simulation Parameters", style={'marginBottom': '20px'}),
                         
-                        # Preset scenarios selector
-                        html.Div([
-                            html.Label("Preset Scenarios:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
-                            html.P("Select a pre-configured scenario to automatically set career parameters", 
-                                 style={'fontSize': '0.85em', 'margin': '2px 0 10px 0'}),
-                            dcc.Dropdown(
-                                id="preset-scenario",
-                                options=[{'label': preset_scenarios[k]['name'], 'value': k} for k in preset_scenarios.keys()],
-                                value="baseline",
-                                placeholder="Select a preset scenario",
-                                style={'fontWeight': 'bold'}
-                            ),
-                            html.Div(id="preset-description", style={'color': '#666', 'fontSize': '0.9em', 'marginTop': '5px', 'fontStyle': 'italic'})
-                        ], style={'marginBottom': '20px', 'backgroundColor': '#e6f7ff', 'padding': '15px', 'borderRadius': '5px'}),
-                        
-                        # Basic settings
-                        html.Div([
-                            html.H4("Basic Settings", style={'marginBottom': '15px'}),
-                            
-                            html.Div([
-                                html.Label("Number of Monte Carlo Runs:"),
-                                dcc.Dropdown(
-                                    id="num-sims",
-                                    options=sim_options,
-                                    value=50
-                                ),
-                                html.P("Each run uses the same parameters but with different random values for salary variation, dropout chance, etc.",
-                                      style={'fontSize': '0.8em', 'color': '#666', 'marginTop': '5px'})
-                            ], style={'marginBottom': '15px'}),
-                            
-                            html.Div([
-                                html.Label("Number of Career Simulations:"),
-                                dcc.Dropdown(
-                                    id="num-students",
-                                    options=student_options,
-                                    value=100
-                                ),
-                                html.P("Each simulation follows one student through their career path. Results are aggregated across all simulations.",
-                                      style={'fontSize': '0.8em', 'color': '#666', 'marginTop': '5px'})
-                            ], style={'marginBottom': '15px'})
-                            
-                        ], style={'marginBottom': '20px', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'}),
-                        
                         # Training parameters
                         html.Div([
                             html.H4("Training Parameters", style={'marginBottom': '15px'}),
@@ -423,27 +380,115 @@ app.layout = html.Div([
                             ], style={'marginBottom': '15px'}),
                         ], style={'marginBottom': '20px', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'}),
                         
-                        # Run simulation button
+                        # Break parameters
                         html.Div([
-                            html.Button(
-                                "Run Career Simulations", 
-                                id="run-simulation", 
-                                n_clicks=0,
-                                style={
-                                    'backgroundColor': '#4CAF50',
-                                    'color': 'white',
-                                    'padding': '12px 20px',
-                                    'borderRadius': '5px',
-                                    'border': 'none',
-                                    'fontSize': '16px',
-                                    'cursor': 'pointer',
-                                    'width': '100%',
-                                    'fontWeight': 'bold'
-                                }
+                            html.H4("Break Parameters", style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Include Breaks Between Cruises:"),
+                                dcc.RadioItems(
+                                    id="include-breaks",
+                                    options=[
+                                        {'label': 'Yes', 'value': True},
+                                        {'label': 'No', 'value': False}
+                                    ],
+                                    value=True,
+                                    inline=True
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Break Duration (months):"),
+                                dcc.Input(
+                                    id="break-duration",
+                                    type="number",
+                                    value=2,
+                                    min=1,
+                                    max=12,
+                                    step=1,
+                                    style={"width": "100%"}
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Break Dropout Rate (%):"),
+                                dcc.Slider(
+                                    id="break-dropout-rate",
+                                    min=0,
+                                    max=20,
+                                    step=0.5,
+                                    value=0,
+                                    marks={i: f'{i}%' for i in range(0, 21, 5)},
+                                )
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.P("Breaks represent time between cruises with no salary or payments.",
+                                  style={'fontSize': '0.85em', 'fontStyle': 'italic', 'color': '#666'})
+                        ], style={'marginBottom': '20px', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'}),
+                        
+                        # Preset scenarios selector
+                        html.Div([
+                            html.Label("Preset Scenarios:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
+                            html.P("Select a pre-configured scenario to automatically set career parameters", 
+                                 style={'fontSize': '0.85em', 'margin': '2px 0 10px 0'}),
+                            dcc.Dropdown(
+                                id="preset-scenario",
+                                options=[{'label': preset_scenarios[k]['name'], 'value': k} for k in preset_scenarios.keys()],
+                                value="baseline",
+                                placeholder="Select a preset scenario",
+                                style={'fontWeight': 'bold'}
                             ),
-                            html.Div(id="loading-message", style={'marginTop': '10px', 'color': '#888'})
-                        ])
-                    ], style={'width': '30%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '20px', 'boxShadow': '0 4px 8px 0 rgba(0,0,0,0.2)', 'backgroundColor': '#f9f9f9', 'borderRadius': '8px'}),
+                            html.Div(id="preset-description", style={'color': '#666', 'fontSize': '0.9em', 'marginTop': '5px', 'fontStyle': 'italic'})
+                        ], style={'marginBottom': '20px', 'backgroundColor': '#e6f7ff', 'padding': '15px', 'borderRadius': '5px'}),
+                        
+                        # Basic settings
+                        html.Div([
+                            html.H4("Basic Settings", style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Number of Monte Carlo Runs:"),
+                                dcc.Dropdown(
+                                    id="num-sims",
+                                    options=sim_options,
+                                    value=50
+                                ),
+                                html.P("Each run uses the same parameters but with different random values for salary variation, dropout chance, etc.",
+                                      style={'fontSize': '0.8em', 'color': '#666', 'marginTop': '5px'})
+                            ], style={'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.Label("Number of Career Simulations:"),
+                                dcc.Dropdown(
+                                    id="num-students",
+                                    options=student_options,
+                                    value=100
+                                ),
+                                html.P("Each simulation follows one student through their career path. Results are aggregated across all simulations.",
+                                      style={'fontSize': '0.8em', 'color': '#666', 'marginTop': '5px'})
+                            ], style={'marginBottom': '15px'}),
+                            
+                            # Run Simulation Button
+                            html.Div([
+                                html.Button(
+                                    "Run Simulation", 
+                                    id="run-simulation", 
+                                    n_clicks=0,
+                                    style={
+                                        'backgroundColor': '#4CAF50',
+                                        'color': 'white',
+                                        'padding': '10px 20px',
+                                        'fontSize': '16px',
+                                        'fontWeight': 'bold',
+                                        'border': 'none',
+                                        'borderRadius': '4px',
+                                        'cursor': 'pointer',
+                                        'width': '100%'
+                                    }
+                                ),
+                                html.Div(id="loading-message", style={'marginTop': '10px', 'textAlign': 'center'})
+                            ], style={'marginBottom': '20px'})
+                        ], style={'marginBottom': '20px', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'})
+                    ], style={'width': '35%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '20px', 'boxShadow': '0 4px 8px 0 rgba(0,0,0,0.2)', 'backgroundColor': '#f9f9f9', 'borderRadius': '8px'}),
                     
                     # Right panel for results
                     html.Div([
@@ -596,6 +641,12 @@ def toggle_advanced_training_visibility(include_advanced):
         Output("first-cruise-salary-variation", "value"),
         Output("first-cruise-duration", "value"),
         Output("first-cruise-payment-fraction", "value"),
+        
+        # Break parameters
+        Output("include-breaks", "value"),
+        Output("break-duration", "value"),
+        Output("break-dropout-rate", "value"),
+        
         Output("subsequent-cruise-dropout-rate", "value"),
         Output("subsequent-cruise-salary-increase", "value"),
         Output("subsequent-cruise-salary-variation", "value"),
@@ -626,6 +677,9 @@ def update_from_preset(preset_name):
         config.first_cruise_salary_variation,
         config.first_cruise_duration,
         config.first_cruise_payment_fraction * 100,
+        config.include_breaks,
+        config.break_duration,
+        config.break_dropout_rate * 100,
         config.subsequent_cruise_dropout_rate * 100,
         config.subsequent_cruise_salary_increase,
         config.subsequent_cruise_salary_variation,
@@ -650,6 +704,9 @@ def update_from_preset(preset_name):
         Input("first-cruise-salary-variation", "value"),
         Input("first-cruise-duration", "value"),
         Input("first-cruise-payment-fraction", "value"),
+        Input("include-breaks", "value"),
+        Input("break-duration", "value"),
+        Input("break-dropout-rate", "value"),
         Input("subsequent-cruise-dropout-rate", "value"),
         Input("subsequent-cruise-salary-increase", "value"),
         Input("subsequent-cruise-salary-variation", "value"),
@@ -673,6 +730,9 @@ def update_simulation_config(
     first_cruise_salary_variation,
     first_cruise_duration,
     first_cruise_payment_fraction,
+    include_breaks,
+    break_duration,
+    break_dropout_rate,
     subsequent_cruise_dropout_rate,
     subsequent_cruise_salary_increase,
     subsequent_cruise_salary_variation,
@@ -686,6 +746,7 @@ def update_simulation_config(
     advanced_training_dropout_rate = advanced_training_dropout_rate / 100 if advanced_training_dropout_rate else 0.12
     first_cruise_dropout_rate = first_cruise_dropout_rate / 100 if first_cruise_dropout_rate else 0.15
     first_cruise_payment_fraction = first_cruise_payment_fraction / 100 if first_cruise_payment_fraction else 0.14
+    break_dropout_rate = break_dropout_rate / 100 if break_dropout_rate else 0.0
     subsequent_cruise_dropout_rate = subsequent_cruise_dropout_rate / 100 if subsequent_cruise_dropout_rate else 0.02
     subsequent_cruise_payment_fraction = subsequent_cruise_payment_fraction / 100 if subsequent_cruise_payment_fraction else 0.14
     
@@ -704,6 +765,9 @@ def update_simulation_config(
         'first_cruise_salary_variation': first_cruise_salary_variation,
         'first_cruise_duration': first_cruise_duration,
         'first_cruise_payment_fraction': first_cruise_payment_fraction,
+        'include_breaks': include_breaks,
+        'break_duration': break_duration,
+        'break_dropout_rate': break_dropout_rate,
         'subsequent_cruise_dropout_rate': subsequent_cruise_dropout_rate,
         'subsequent_cruise_salary_increase': subsequent_cruise_salary_increase,
         'subsequent_cruise_salary_variation': subsequent_cruise_salary_variation,
@@ -753,76 +817,64 @@ def calculate_progression_data(state_metrics, config):
 
             # Calculate dropouts and completions based on configured dropout rates
             dropout_rate = 0.0 # Default as decimal
-            if "Basic Training" in state_name:
+            if state_name == "Training":
                 dropout_rate = config.get('basic_training_dropout_rate', 0)
-            elif "Advanced Training" in state_name:
+            elif state_name == "Transportation and placement":
                 dropout_rate = config.get('advanced_training_dropout_rate', 0)
-            elif "First Cruise" in state_name:
+            elif state_name == "First Cruise":
                 dropout_rate = config.get('first_cruise_dropout_rate', 0)
-            else: # Subsequent cruises or completion state
-                 # Assume 0 dropout for completion states if not specified as a cruise
-                if "Cruise" in state_name:
-                    dropout_rate = config.get('subsequent_cruise_dropout_rate', 0)
-                else:
-                    dropout_rate = 0.0 # e.g., for a final "Completed Program" state
+            elif "Break" in state_name:
+                dropout_rate = config.get('break_dropout_rate', 0)
+            elif "Cruise" in state_name:  # For subsequent cruises
+                dropout_rate = config.get('subsequent_cruise_dropout_rate', 0)
 
             dropouts = round(entered * dropout_rate)
             completed = entered - dropouts
 
             # Get financial metrics for the state
-            avg_salary = metrics.get('avg_salary', 0)
-            avg_payment = metrics.get('avg_payment', 0)
-            active_months = metrics.get('active_months', 0)
+            state_salary = metrics.get('avg_salary', 0)
+            state_payment = metrics.get('avg_payment', 0)
 
-            # Ensure numeric
-            avg_salary = avg_salary if isinstance(avg_salary, (int, float)) else 0
-            avg_payment = avg_payment if isinstance(avg_payment, (int, float)) else 0
-            active_months = active_months if isinstance(active_months, (int, float)) else 0
+            # Get state duration for converting to monthly values
+            if state_name == "Training":
+                state_duration = config.get('basic_training_duration', 0)
+            elif state_name == "Transportation and placement":
+                state_duration = config.get('advanced_training_duration', 0)
+            elif state_name == "First Cruise":
+                state_duration = config.get('first_cruise_duration', 0)
+            elif "Break" in state_name:
+                state_duration = config.get('break_duration', 0)
+            else:  # Subsequent cruises
+                state_duration = config.get('subsequent_cruise_duration', 0)
 
-            # Calculate cash flow per student for this state based on config duration
-            cash_flow = 0
-            state_duration = 0 # Default duration
-            if "Training" in state_name:
-                training_cost = 0
-                if "Basic" in state_name:
-                    training_cost = config.get('basic_training_cost', 0)
-                    state_duration = config.get('basic_training_duration', 0) # Get configured duration
-                elif "Advanced" in state_name:
-                    # Only apply cost if advanced training is included in the config
-                    if config.get('include_advanced_training', False):
-                        training_cost = config.get('advanced_training_cost', 0)
-                        state_duration = config.get('advanced_training_duration', 0) # Get configured duration
-                    else:
-                        # If not included, skip this state effectively for cash flow
-                        training_cost = 0
-                        state_duration = 0
-                cash_flow = -training_cost
-            elif "Cruise" in state_name: # Calculate payment only for cruise states
-                avg_monthly_payment = metrics.get('avg_payment', 0) # Get avg monthly payment from simulation results
-                avg_monthly_payment = avg_monthly_payment if isinstance(avg_monthly_payment, (int, float)) else 0
+            # Convert state salary and payment to monthly values if duration > 0
+            avg_monthly_salary = state_salary / state_duration if state_duration > 0 else 0
+            avg_monthly_payment = state_payment / state_duration if state_duration > 0 else 0
 
-                if "First Cruise" in state_name:
-                    state_duration = config.get('first_cruise_duration', 0) # Get configured duration
-                else: # Subsequent cruises
-                    state_duration = config.get('subsequent_cruise_duration', 0) # Get configured duration
-
-                # Calculate cash flow per student = avg monthly payment * duration of state
-                cash_flow = avg_monthly_payment * state_duration
-            # Assume 0 cash flow for non-training/non-cruise states (like dropouts/completion)
+            # Calculate cash flow per student for this state
+            if state_name == "Training":
+                cash_flow = -config.get('basic_training_cost', 0)
+            elif state_name == "Transportation and placement":
+                if config.get('include_advanced_training', False):
+                    cash_flow = -config.get('advanced_training_cost', 0)
+                else:
+                    cash_flow = 0
+            else:  # Cruises and breaks
+                cash_flow = state_payment  # Use total state payment
 
             progression_data.append({
                 'state': state_name,
                 'entered': entered,
                 'completed': completed,
                 'dropouts': dropouts,
-                'dropout_rate': dropout_rate * 100, # Convert back to percentage for display
-                'avg_salary': avg_salary, # Keep avg monthly salary from simulation
-                'avg_payment': metrics.get('avg_payment', 0), # Keep avg monthly payment from simulation
-                'active_months': state_duration, # Use configured duration for this metric now
-                'cash_flow_per_student': cash_flow # Use the corrected cash flow calculation
+                'dropout_rate': dropout_rate * 100,  # Convert to percentage for display
+                'avg_salary': avg_monthly_salary,  # Now properly monthly
+                'avg_payment': avg_monthly_payment,  # Now properly monthly
+                'active_months': state_duration,
+                'cash_flow_per_student': cash_flow
             })
         else:
-             # Handle unexpected metric format (should not happen with pre-processing)
+             # Handle unexpected metric format
              progression_data.append({
                 'state': f"State {state_idx_str} (error)",
                 'entered': entered if state_idx > 0 else entered_count,
@@ -834,7 +886,6 @@ def calculate_progression_data(state_metrics, config):
                 'active_months': 0,
                 'cash_flow_per_student': 0
             })
-        # Update entered_count for the next iteration if needed (handled by logic above)
 
     return progression_data
 # *** END: Helper function for progression calculation ***
@@ -866,6 +917,9 @@ def run_simulation_callback(n_clicks, config_data):
         first_cruise_salary_variation=config_data.get('first_cruise_salary_variation', 6.0),
         first_cruise_duration=config_data.get('first_cruise_duration', 8),
         first_cruise_payment_fraction=config_data.get('first_cruise_payment_fraction', 0.14),
+        include_breaks=config_data.get('include_breaks', True),
+        break_duration=config_data.get('break_duration', 2),
+        break_dropout_rate=config_data.get('break_dropout_rate', 0.0),
         subsequent_cruise_dropout_rate=config_data.get('subsequent_cruise_dropout_rate', 0.02),
         subsequent_cruise_salary_increase=config_data.get('subsequent_cruise_salary_increase', 10.0),
         subsequent_cruise_salary_variation=config_data.get('subsequent_cruise_salary_variation', 5.0),
@@ -975,6 +1029,7 @@ def update_summary_stats(results):
     avg_total_payments = results.get('avg_total_payments', 0)
     avg_net_cash_flow = results.get('avg_net_cash_flow', 0)
     avg_roi = results.get('avg_roi', 0)
+    avg_monthly_irr = results.get('avg_monthly_irr')
     
     # Create a summary statistics card
     return html.Div([
@@ -1016,6 +1071,10 @@ def update_summary_stats(results):
                     html.Div([
                         html.P("Avg ROI:", style={'fontWeight': 'bold'}),
                         html.P(f"{avg_roi:.1f}%")
+                    ], style={'marginBottom': '10px'}),
+                    html.Div([
+                        html.P("Monthly-Based Annual IRR:", style={'fontWeight': 'bold'}),
+                        html.P(f"{avg_monthly_irr:.1f}%" if avg_monthly_irr is not None else "N/A")
                     ])
                 ])
             ], style={'width': '50%', 'display': 'inline-block', 'verticalAlign': 'top'})
@@ -1154,6 +1213,16 @@ def update_detailed_data(results):
         {"Parameter": "First Cruise Salary Variation", "Value": f"{config.get('first_cruise_salary_variation', 0):.1f}%"},
         {"Parameter": "First Cruise Duration", "Value": f"{config.get('first_cruise_duration', 0)} months"},
         {"Parameter": "First Cruise Payment Fraction", "Value": f"{config.get('first_cruise_payment_fraction', 0)*100:.1f}%"},
+        {"Parameter": "Include Breaks Between Cruises", "Value": "Yes" if config.get('include_breaks', True) else "No"}
+    ])
+    
+    if config.get('include_breaks', True):
+        config_data.extend([
+            {"Parameter": "Break Duration", "Value": f"{config.get('break_duration', 0)} months"},
+            {"Parameter": "Break Dropout Rate", "Value": f"{config.get('break_dropout_rate', 0)*100:.1f}%"}
+        ])
+    
+    config_data.extend([
         {"Parameter": "Subsequent Cruise Dropout Rate", "Value": f"{config.get('subsequent_cruise_dropout_rate', 0)*100:.1f}%"},
         {"Parameter": "Subsequent Cruise Salary Increase", "Value": f"{config.get('subsequent_cruise_salary_increase', 0):.1f}%"},
         {"Parameter": "Subsequent Cruise Salary Variation", "Value": f"{config.get('subsequent_cruise_salary_variation', 0):.1f}%"},
@@ -1191,7 +1260,9 @@ def update_detailed_data(results):
         {"Metric": "Average ROI", "Value": f"{results.get('avg_roi', 0):.1f}%"},
         {"Metric": "ROI Standard Deviation", "Value": f"{results.get('roi_std', 0):.1f}%"},
         {"Metric": "ROI 10th Percentile", "Value": f"{results.get('roi_10th', 0):.1f}%"},
-        {"Metric": "ROI 90th Percentile", "Value": f"{results.get('roi_90th', 0):.1f}%"}
+        {"Metric": "ROI 90th Percentile", "Value": f"{results.get('roi_90th', 0):.1f}%"},
+        {"Metric": "Simple Annual IRR (Simplified)", "Value": f"{results.get('avg_annual_irr', 0):.1f}%" if results.get('avg_annual_irr') is not None else "N/A"},
+        {"Metric": "Monthly-Based Annual IRR", "Value": f"{results.get('avg_monthly_irr', 0):.1f}%" if results.get('avg_monthly_irr') is not None else "N/A"}
     ]
     
     roi_table = html.Div([
