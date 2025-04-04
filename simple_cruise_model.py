@@ -20,26 +20,22 @@ class CruiseCareerSequence:
         
         # Current state tracking
         self.current_state_index = 0
-        self.months_in_current_state = 0
         
         # Financial tracking
         self.total_training_costs = 0.0
         self.total_payments = 0.0
-        self.current_salary = 0.0
+        self.current_state_salary = 0.0  # Salary for the entire state
         self.last_cruise_salary = 0.0  # Track last cruise salary for increases
         
         # History tracking
-        self.monthly_salaries = []
-        self.monthly_payments = []
+        self.state_salaries = []
+        self.state_payments = []
         self.training_costs_by_state = []
         self.completed_states = []
         
         # Status flags
         self.dropout = False
         self.completed = False
-        
-        # For per-state dropout
-        self.dropout_checked = False
         
         # Initialize first state
         self._enter_new_state()
@@ -56,29 +52,23 @@ class CruiseCareerSequence:
         self.total_training_costs += config.training_cost
         self.training_costs_by_state.append(config.training_cost)
         
-        # Reset state duration counter
-        self.months_in_current_state = 0
-        
-        # Reset dropout check for new state
-        self.dropout_checked = False
-        
         # Check for dropout at the start of the state
         if self._check_dropout():
             self.dropout = True
 
-    def _calculate_monthly_salary(self) -> float:
-        """Calculate monthly salary based on current state and progression"""
+    def _calculate_state_salary(self) -> float:
+        """Calculate salary for the entire state based on current state"""
         if self.current_state_index >= self.num_states:
             return 0.0
             
         config = self.state_configs[self.current_state_index]
         
         # No salary during training states
-        if config.base_salary == 0:
+        if config.base_salary == 0 and "Training" in config.name:
             return 0.0
             
         # First cruise - use base salary with variation
-        if self.last_cruise_salary == 0:
+        if "First Cruise" in config.name or self.last_cruise_salary == 0:
             variation_amount = config.base_salary * (config.salary_variation_pct / 100)
             new_salary = np.random.normal(config.base_salary, variation_amount)
             self.last_cruise_salary = new_salary
@@ -89,51 +79,45 @@ class CruiseCareerSequence:
         variation_amount = increase * (config.salary_variation_pct / 100)
         new_salary = self.last_cruise_salary + np.random.normal(increase, variation_amount)
         self.last_cruise_salary = new_salary
-        return max(0, new_salary)
+            
+        return max(0, self.last_cruise_salary)
 
     def _check_dropout(self) -> bool:
         """Check if person drops out in current state"""
-        if self.current_state_index >= self.num_states or self.dropout_checked:
+        if self.current_state_index >= self.num_states:
             return False
             
         config = self.state_configs[self.current_state_index]
-        self.dropout_checked = True  # Mark that we've already checked dropout for this state
         return np.random.random() < config.dropout_rate
 
-    def advance_month(self) -> Dict[str, Any]:
-        """Advance one month and return monthly results"""
+    def advance_state(self) -> Dict[str, Any]:
+        """Advance to the next state and return state results"""
         if self.dropout or self.completed:
-            return self._get_monthly_summary()
+            return self._get_state_summary()
 
-        # Calculate salary and payments
-        self.current_salary = self._calculate_monthly_salary()
+        # Calculate salary and payments for the current state
+        self.current_state_salary = self._calculate_state_salary()
         
         if self.current_state_index < self.num_states:
             config = self.state_configs[self.current_state_index]
-            monthly_payment = self.current_salary * config.payment_fraction
+            state_payment = self.current_state_salary * config.payment_fraction
         else:
-            monthly_payment = 0
+            state_payment = 0
             
-        self.total_payments += monthly_payment
+        self.total_payments += state_payment
         
         # Track history
-        self.monthly_salaries.append(self.current_salary)
-        self.monthly_payments.append(monthly_payment)
+        self.state_salaries.append(self.current_state_salary)
+        self.state_payments.append(state_payment)
         
-        # Update state duration
-        self.months_in_current_state += 1
-        
-        # Check for state completion
-        if self.current_state_index < self.num_states:
-            config = self.state_configs[self.current_state_index]
-            if self.months_in_current_state >= config.duration_months:
-                self.completed_states.append(self.current_state_index)
-                self.current_state_index += 1
-                self._enter_new_state()
+        # Complete the current state and move to the next
+        self.completed_states.append(self.current_state_index)
+        self.current_state_index += 1
+        self._enter_new_state()
             
-        return self._get_monthly_summary()
+        return self._get_state_summary()
 
-    def _get_monthly_summary(self) -> Dict[str, Any]:
+    def _get_state_summary(self) -> Dict[str, Any]:
         """Return summary of current status"""
         current_payment_fraction = (
             self.state_configs[self.current_state_index].payment_fraction 
@@ -147,12 +131,20 @@ class CruiseCareerSequence:
             else f"State {self.current_state_index}"
         )
         
+        # Calculate state duration in months (for backward compatibility)
+        state_duration = (
+            self.state_configs[self.current_state_index].duration_months
+            if self.current_state_index < self.num_states
+            else 0
+        )
+        
         return {
             'state_index': self.current_state_index,
             'state_name': current_state_name,
-            'months_in_state': self.months_in_current_state,
-            'current_salary': self.current_salary,
-            'monthly_payment': self.current_salary * current_payment_fraction,
+            'state_duration': state_duration,
+            'current_state_salary': self.current_state_salary,
+            'state_payment': self.current_state_salary * current_payment_fraction,
+            'payment_fraction': current_payment_fraction,
             'total_training_costs': self.total_training_costs,
             'total_payments': self.total_payments,
             'net_cash_flow': self.total_payments - self.total_training_costs,
@@ -199,7 +191,7 @@ def create_default_state_configs(num_cruises: int = 3) -> List[StateConfig]:
         StateConfig(
             training_cost=0,       # No additional training cost
             dropout_rate=0.15,     # 15% dropout rate
-            base_salary=5000,      # First cruise base salary
+            base_salary=5000,      # First cruise period salary
             salary_increase_pct=0, # Initial salary, no increase
             salary_variation_pct=6,# ±6% variation (±$300 on $5000)
             duration_months=8,     # 8 month cruise
@@ -229,7 +221,6 @@ def create_default_state_configs(num_cruises: int = 3) -> List[StateConfig]:
 def run_simulation(
     num_cruises: int = 3,
     state_configs: Optional[List[StateConfig]] = None,
-    max_months: int = 48,
     random_seed: Optional[int] = None
 ) -> Dict[str, Any]:
     """Run a simulation with given state configurations
@@ -237,7 +228,6 @@ def run_simulation(
     Args:
         num_cruises: Number of cruises to simulate (default: 3)
         state_configs: Custom state configurations (if None, uses default configs)
-        max_months: Maximum number of months to simulate
         random_seed: Optional random seed for reproducibility
     """
     
@@ -249,10 +239,10 @@ def run_simulation(
         random_seed=random_seed
     )
     
-    monthly_results = []
-    for _ in range(max_months):
-        result = sequence.advance_month()
-        monthly_results.append(result)
+    state_results = []
+    while True:
+        result = sequence.advance_state()
+        state_results.append(result)
         
         if sequence.dropout or sequence.completed:
             break
@@ -261,27 +251,38 @@ def run_simulation(
     roi = ((sequence.total_payments - sequence.total_training_costs) / 
            sequence.total_training_costs if sequence.total_training_costs > 0 else 0)
     
+    # For backwards compatibility, compute duration_months from state durations
+    total_months = 0
+    for i, state_config in enumerate(state_configs):
+        if i in sequence.completed_states:
+            total_months += state_config.duration_months
+    
+    # Add current state if not completed all states and not dropped out
+    if not sequence.completed and not sequence.dropout and sequence.current_state_index < len(state_configs):
+        # We're still in the last state, add its duration
+        total_months += state_configs[sequence.current_state_index].duration_months
+    
     return {
         'final_state_index': sequence.current_state_index,
         'total_training_costs': sequence.total_training_costs,
         'total_payments': sequence.total_payments,
         'net_cash_flow': sequence.total_payments - sequence.total_training_costs,
-        'duration_months': len(monthly_results),
+        'duration_months': total_months,
         'roi': roi,
         'dropout': sequence.dropout,
         'completed': sequence.completed,
         'completed_states': sequence.completed_states,
         'training_costs_by_state': sequence.training_costs_by_state,
-        'monthly_results': monthly_results,
-        'monthly_salaries': sequence.monthly_salaries,
-        'monthly_payments': sequence.monthly_payments
+        'state_results': state_results,
+        'state_salaries': sequence.state_salaries,
+        'state_payments': sequence.state_payments
     }
 
 
 def calculate_summary_metrics(results: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate comprehensive summary metrics from simulation results"""
-    monthly_salaries = results['monthly_salaries']
-    monthly_payments = results['monthly_payments']
+    state_salaries = results['state_salaries']
+    state_payments = results['state_payments']
     total_training_costs = results['total_training_costs']
     total_payments = results['total_payments']
     duration_months = results['duration_months']
@@ -294,14 +295,15 @@ def calculate_summary_metrics(results: Dict[str, Any]) -> Dict[str, Any]:
         'roi_percentage': ((total_payments - total_training_costs) / total_training_costs * 100 
                          if total_training_costs > 0 else 0),
         'duration_months': duration_months,
-        'average_monthly_salary': np.mean([s for s in monthly_salaries if s > 0]) if monthly_salaries else 0,
-        'average_monthly_payment': np.mean([p for p in monthly_payments if p > 0]) if monthly_payments else 0,
+        'num_states': len(state_salaries),
+        'average_state_salary': np.mean([s for s in state_salaries if s > 0]) if state_salaries else 0,
+        'average_state_payment': np.mean([p for p in state_payments if p > 0]) if state_payments else 0,
     }
     
-    # Calculate breakeven month (if reached)
-    cumulative_payments = np.cumsum(monthly_payments)
-    breakeven_months = np.where(cumulative_payments >= total_training_costs)[0]
-    metrics['breakeven_month'] = breakeven_months[0] + 1 if len(breakeven_months) > 0 else None
+    # Calculate breakeven state (if reached)
+    cumulative_payments = np.cumsum(state_payments)
+    breakeven_states = np.where(cumulative_payments >= total_training_costs)[0]
+    metrics['breakeven_state'] = breakeven_states[0] + 1 if len(breakeven_states) > 0 else None
     
     # Calculate simple IRR (annualized return)
     if duration_months > 0 and total_training_costs > 0:
@@ -327,15 +329,16 @@ def print_simulation_summary(results: Dict[str, Any]) -> None:
     
     # Training Progress
     print("\nTraining Progress:")
-    if 'state_name' in results['monthly_results'][-1]:
-        print(f"Final State: {results['monthly_results'][-1]['state_name']} (index {results['final_state_index']})")
+    if 'state_name' in results['state_results'][-1]:
+        print(f"Final State: {results['state_results'][-1]['state_name']} (index {results['final_state_index']})")
     else:
         print(f"Final State: {results['final_state_index']}")
     print(f"States Completed: {results['completed_states']}")
-    print(f"Duration: {metrics['duration_months']} months")
+    print(f"Number of States: {metrics['num_states']}")
+    print(f"Duration (calculated in months): {metrics['duration_months']} months")
     if results['dropout']:
-        if 'state_name' in results['monthly_results'][-1]:
-            print(f"Status: Dropped out during {results['monthly_results'][-1]['state_name']}")
+        if 'state_name' in results['state_results'][-1]:
+            print(f"Status: Dropped out during {results['state_results'][-1]['state_name']}")
         else:
             print(f"Status: Dropped out during state {results['final_state_index']}")
     elif results['completed']:
@@ -349,8 +352,8 @@ def print_simulation_summary(results: Dict[str, Any]) -> None:
     
     # Performance Metrics
     print("\nPerformance Metrics:")
-    if metrics['breakeven_month']:
-        print(f"Breakeven Month: {metrics['breakeven_month']}")
+    if metrics['breakeven_state']:
+        print(f"Breakeven State: {metrics['breakeven_state']}")
     else:
         print("Breakeven: Not reached")
     print(f"Repayment Rate: {metrics['repayment_rate']:.1f}%")
@@ -358,17 +361,17 @@ def print_simulation_summary(results: Dict[str, Any]) -> None:
         print(f"Annual IRR: {metrics['annual_irr']:.1f}%")
     
     # Averages
-    print("\nMonthly Averages:")
-    print(f"Average Monthly Salary: ${metrics['average_monthly_salary']:,.2f}")
-    print(f"Average Monthly Payment: ${metrics['average_monthly_payment']:,.2f}")
+    print("\nState Averages:")
+    print(f"Average State Salary: ${metrics['average_state_salary']:,.2f}")
+    print(f"Average State Payment: ${metrics['average_state_payment']:,.2f}")
     
     # Return Profile
-    if metrics['breakeven_month']:
-        months_after_breakeven = metrics['duration_months'] - metrics['breakeven_month']
-        if months_after_breakeven > 0:
-            returns_after_breakeven = sum(results['monthly_payments'][metrics['breakeven_month']:])
+    if metrics['breakeven_state']:
+        states_after_breakeven = metrics['num_states'] - metrics['breakeven_state']
+        if states_after_breakeven > 0:
+            returns_after_breakeven = sum(results['state_payments'][metrics['breakeven_state']:])
             print(f"\nReturns after Breakeven: ${returns_after_breakeven:,.2f}")
-            print(f"Months after Breakeven: {months_after_breakeven}")
+            print(f"States after Breakeven: {states_after_breakeven}")
 
 
 def compare_cruise_configurations(max_cruises: int = 10, num_simulations: int = 100) -> pd.DataFrame:
@@ -405,7 +408,7 @@ def compare_cruise_configurations(max_cruises: int = 10, num_simulations: int = 
                 'total_payments': metrics['total_payments'],
                 'net_returns': metrics['net_returns'],
                 'roi_percentage': metrics['roi_percentage'],
-                'breakeven_month': metrics['breakeven_month'],
+                'breakeven_state': metrics['breakeven_state'],
                 'annual_irr': metrics['annual_irr']
             })
         
@@ -420,7 +423,7 @@ def compare_cruise_configurations(max_cruises: int = 10, num_simulations: int = 
             'avg_duration': df['duration_months'].mean(),
             'avg_net_returns': df['net_returns'].mean(),
             'avg_roi': df['roi_percentage'].mean(),
-            'breakeven_rate': df['breakeven_month'].notna().mean() * 100,
+            'breakeven_rate': df['breakeven_state'].notna().mean() * 100,
             'avg_annual_irr': df['annual_irr'].mean()
         }
         
@@ -468,10 +471,22 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     state_configs = config.create_state_configs()
     num_states = len(state_configs)
     
+    # Print state config debug info
+    print("\nDEBUG - State Configuration:")
+    for i, state in enumerate(state_configs):
+        print(f"State {i} ({state.name}): payment_fraction={state.payment_fraction}, base_salary={state.base_salary}")
+    
     # Initialize state-specific tracking
     state_salary_sums = {i: 0.0 for i in range(num_states)}
-    state_payment_sums = {i: 0.0 for i in range(num_states)}
-    state_active_months = {i: 0 for i in range(num_states)}
+    state_salary_counts = {i: 0 for i in range(num_states)} # Track states with salary > 0
+    state_count = {i: 0 for i in range(num_states)}
+    state_total_costs = {i: 0.0 for i in range(num_states)}
+    state_total_payments = {i: 0.0 for i in range(num_states)}
+    state_entry_counts = {i: 0 for i in range(num_states)} # Track how many simulations entered each state
+    
+    # Add debug counters for payment tracking
+    debug_payment_counts = {i: 0 for i in range(num_states)}
+    debug_payment_sums = {i: 0.0 for i in range(num_states)}
     
     for i in range(config.num_students):
         # Use student index as seed if no random seed provided
@@ -479,28 +494,94 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         
         result = run_simulation(
             state_configs=state_configs,
-            max_months=config.max_months,
             random_seed=seed
         )
         all_results.append(result)
         
+        # Debug output for first few simulations
+        if i < 3:  # Print debug info for first 3 students
+            print(f"\nDEBUG - Student {i} Payment Details:")
+            for j, state in enumerate(result['state_results']):
+                state_idx = state['state_index']
+                if state_idx < num_states:
+                    payment_fraction = state.get('payment_fraction', 0)
+                    print(f"State {j}: Index {state_idx} ({state_configs[state_idx].name}), " +
+                          f"State Salary: ${state['current_state_salary']:.2f}, " +
+                          f"Payment: ${state['state_payment']:.2f}, " +
+                          f"Fraction: {payment_fraction:.2f}")
+        
         # Track state-specific metrics
-        for month_result in result['monthly_results']:
-            state_idx = month_result['state_index']
+        for state_result in result['state_results']:
+            state_idx = state_result['state_index']
             if state_idx < num_states:  # Ensure valid state
-                state_salary_sums[state_idx] += month_result['current_salary']
-                state_payment_sums[state_idx] += month_result['monthly_payment']
-                state_active_months[state_idx] += 1
-    
-    # Calculate average salaries and payments by state
+                # Track salary data
+                state_salary = state_result['current_state_salary']
+                state_salary_sums[state_idx] += state_salary
+                state_count[state_idx] += 1
+                if state_salary > 0:
+                    state_salary_counts[state_idx] += 1
+                
+                # Track payment data - this is the key part
+                state_payment = state_result['state_payment']
+                state_total_payments[state_idx] += state_payment
+                
+                # Debug counters
+                if state_payment > 0:
+                    debug_payment_counts[state_idx] += 1
+                    debug_payment_sums[state_idx] += state_payment
+
+    # Print debug payment info
+    print("\nDEBUG - Payment Tracking:")
+    for i in range(num_states):
+        if debug_payment_counts[i] > 0:
+            avg = debug_payment_sums[i] / debug_payment_counts[i]
+            print(f"State {i} ({state_configs[i].name}): " +
+                  f"States with payments: {debug_payment_counts[i]}, " +
+                  f"Total payments: ${debug_payment_sums[i]:.2f}, " +
+                  f"Avg payment: ${avg:.2f}")
+        else:
+            print(f"State {i} ({state_configs[i].name}): No payments recorded")
+
+    # Refined entry count logic: count if state appears in state results at all
+    state_entry_counts = {i: 0 for i in range(num_states)}
+    for r in all_results:
+        unique_states_entered = set(sr['state_index'] for sr in r['state_results'] if sr['state_index'] < num_states)
+        for state_idx in unique_states_entered:
+            state_entry_counts[state_idx] += 1
+            
+    # Recalculate total costs based *only* on simulations that entered the state
+    state_total_costs = {i: 0.0 for i in range(num_states)}
+    for r in all_results:
+        unique_states_entered = set(sr['state_index'] for sr in r['state_results'] if sr['state_index'] < num_states)
+        for state_idx, cost in enumerate(r['training_costs_by_state']):
+            if state_idx < num_states and state_idx in unique_states_entered: # Check if the state was actually entered in this sim
+                 state_total_costs[state_idx] += cost
+                 
+    # Calculate average salaries and payment metrics by state
     state_metrics = {}
     for state_idx in range(num_states):
-        total_months = config.num_students * state_configs[state_idx].duration_months
+        num_salary_states = state_salary_counts[state_idx]
+        avg_state_salary = (state_salary_sums[state_idx] / num_salary_states 
+                      if num_salary_states > 0 else 0.0)
+        
+        # Calculate average state payment based on salary times payment fraction
+        if state_idx < num_states:
+            config = state_configs[state_idx]
+            expected_payment = avg_state_salary * config.payment_fraction
+        else:
+            expected_payment = 0.0
+        
+        # Calculate actual average payment
+        avg_payment = (state_total_payments[state_idx] / num_salary_states
+                       if num_salary_states > 0 else 0.0)
+                       
         state_metrics[state_idx] = {
             'name': state_configs[state_idx].name,
-            'avg_salary': state_salary_sums[state_idx] / total_months,  # Average across all students
-            'avg_payment': state_payment_sums[state_idx] / total_months, # Average across all students
-            'active_months': state_active_months[state_idx]
+            'avg_state_salary': avg_state_salary,
+            'avg_payment': avg_payment,
+            'expected_payment': expected_payment, # Add this for debugging
+            'state_count': state_count[state_idx],
+            'salary_count': num_salary_states
         }
     
     # Convert results to DataFrame for analysis
@@ -508,7 +589,7 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         {
             'dropout': r['dropout'],
             'completed': r['completed'],
-            'duration_months': r['duration_months'],
+            'duration_states': len(r['state_results']),
             'total_training_costs': r['total_training_costs'],
             'total_payments': r['total_payments'],
             'net_cash_flow': r['net_cash_flow'],
@@ -523,7 +604,7 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     return {
         'completion_rate': df['completed'].mean() * 100,
         'dropout_rate': df['dropout'].mean() * 100,
-        'avg_duration': df['duration_months'].mean(),
+        'avg_duration_states': df['duration_states'].mean(),
         'avg_training_cost': df['total_training_costs'].mean(),
         'avg_total_payments': df['total_payments'].mean(),
         'avg_net_cash_flow': df['net_cash_flow'].mean(),
@@ -532,7 +613,10 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         'roi_10th': roi.quantile(0.1) * 100,
         'roi_90th': roi.quantile(0.9) * 100,
         'state_distribution': df['final_state_index'].value_counts().sort_index().to_dict(),
-        'state_metrics': state_metrics
+        'state_metrics': state_metrics,
+        'state_total_costs': state_total_costs,
+        'state_total_payments': state_total_payments,
+        'state_entry_counts': state_entry_counts
     }
 
 def print_simulation_results(results: Dict, scenario_name: str = "Default") -> None:
@@ -548,7 +632,7 @@ def print_simulation_results(results: Dict, scenario_name: str = "Default") -> N
     print("\nCompletion Statistics:")
     print(f"Completion Rate: {results['completion_rate']:.1f}%")
     print(f"Dropout Rate: {results['dropout_rate']:.1f}%")
-    print(f"Average Duration: {results['avg_duration']:.1f} months")
+    print(f"Average Duration (states): {results['avg_duration_states']:.1f}")
     
     print("\nFinancial Statistics:")
     print(f"Average Training Cost: ${results['avg_training_cost']:,.2f}")
@@ -563,11 +647,17 @@ def print_simulation_results(results: Dict, scenario_name: str = "Default") -> N
     
     print("\nState-by-State Analysis:")
     print("------------------------")
-    print(f"{'State':<20} {'Avg Monthly Salary':>20} {'Avg Monthly Payment':>20} {'Active Months':>15}")
-    print("-" * 75)
+    print(f"{'State':<20} {'Entries':>8} {'State Salary':>15} {'Avg Payment':>15} {'Expected':>15} {'Total Payments':>20}")
+    print("-" * 95)
     
     for state_idx, metrics in results['state_metrics'].items():
-        print(f"{metrics['name']:<20} ${metrics['avg_salary']:>19,.2f} ${metrics['avg_payment']:>19,.2f} {metrics['active_months']:>15,d}")
+        # Ensure state name exists before printing
+        state_name = metrics.get('name', f'State {state_idx}')
+        entries = results['state_entry_counts'].get(state_idx, 0)
+        total_payments = results['state_total_payments'].get(state_idx, 0.0)
+        expected_payment = metrics.get('expected_payment', 0.0)
+        
+        print(f"{state_name:<20} {entries:>8} ${metrics['avg_state_salary']:>14,.2f} ${metrics['avg_payment']:>14,.2f} ${expected_payment:>14,.2f} ${total_payments:>19,.2f}")
     
     print("\nFinal State Distribution:")
     total_students = sum(results['state_distribution'].values())
@@ -599,7 +689,6 @@ def analyze_state_transitions(config: SimulationConfig, num_simulations: int = 5
         seed = i if config.random_seed is None else config.random_seed + i
         result = run_simulation(
             state_configs=state_configs,
-            max_months=config.max_months,
             random_seed=seed
         )
         
@@ -646,9 +735,8 @@ def analyze_state_transitions(config: SimulationConfig, num_simulations: int = 5
     # Add explanation for dropout rates
     print("\nDropout Rate Analysis:")
     print("=====================")
-    print("Each state now has a single dropout chance that applies to the entire state period,")
-    print("rather than a monthly dropout chance that compounds over time.")
-    print("This makes dropout rates more intuitive and easier to configure.")
+    print("Each state has a single dropout chance that applies at the beginning of the state,")
+    print("making dropout rates more intuitive and easier to configure.")
     
     # Explain dropout vs completion rate
     print("\nDropout vs Completion Rate:")
@@ -663,7 +751,7 @@ def analyze_state_transitions(config: SimulationConfig, num_simulations: int = 5
     print("2. Advanced Training: 10-15% for most programs")
     print("3. First Cruise: 10-20% (higher due to first real-world experience)")
     print("4. Subsequent Cruises: 2-5% (lower as students gain experience)")
-    print("\nThese rates now directly represent the percentage of students who")
+    print("\nThese rates directly represent the percentage of students who")
     print("will not complete each state, making the simulation more intuitive.")
 
 if __name__ == "__main__":
