@@ -1069,8 +1069,6 @@ def update_summary_stats(results):
     avg_training_cost = results.get('avg_training_cost', 0)
     avg_total_payments = results.get('avg_total_payments', 0)
     avg_net_cash_flow = results.get('avg_net_cash_flow', 0)
-    avg_roi = results.get('avg_roi', 0)
-    avg_monthly_irr = results.get('avg_monthly_irr')
     
     # Create a summary statistics card
     return html.Div([
@@ -1108,14 +1106,6 @@ def update_summary_stats(results):
                     html.Div([
                         html.P("Avg Net Cash Flow:", style={'fontWeight': 'bold'}),
                         html.P(f"${avg_net_cash_flow:.2f}")
-                    ], style={'marginBottom': '10px'}),
-                    html.Div([
-                        html.P("Avg ROI:", style={'fontWeight': 'bold'}),
-                        html.P(f"{avg_roi:.1f}%")
-                    ], style={'marginBottom': '10px'}),
-                    html.Div([
-                        html.P("Monthly-Based Annual IRR:", style={'fontWeight': 'bold'}),
-                        html.P(f"{avg_monthly_irr:.1f}%" if avg_monthly_irr is not None else "N/A")
                     ])
                 ])
             ], style={'width': '50%', 'display': 'inline-block', 'verticalAlign': 'top'})
