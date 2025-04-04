@@ -3,7 +3,7 @@ import pandas as pd
 import numpy_financial as npf  # Add import for numpy-financial
 from typing import List, Dict, Union, Optional, Tuple, Any
 from dataclasses import dataclass
-from simulation_config import StateConfig, SimulationConfig, DEFAULT_CONFIG, BASELINE_CONFIG, OPTIMISTIC_CONFIG, PESSIMISTIC_CONFIG
+from simulation_config import StateConfig, SimulationConfig, DEFAULT_CONFIG
 
 class CruiseCareerSequence:
     """Represents a person going through a sequence of training and work states"""
@@ -68,8 +68,8 @@ class CruiseCareerSequence:
             
         config = self.state_configs[self.current_state_index]
         
-        # No salary during training states
-        if config.base_salary == 0 and ("Training" in config.name or "Transportation and placement" in config.name):
+        # No salary during training states or breaks
+        if config.base_salary == 0 and ("Training" in config.name or "Transportation and placement" in config.name or "Break" in config.name):
             return 0.0
             
         # First cruise - use base salary with variation
@@ -101,11 +101,11 @@ class CruiseCareerSequence:
             return self._get_state_summary()
 
         # Calculate payment for the current state
-        # Salary has already been calculated when entering the state
         state_payment = 0.0
         if self.current_state_index < self.num_states:
             config = self.state_configs[self.current_state_index]
-            if "Cruise" in config.name:  # Ensure payments for all cruise states
+            # Only calculate payment for cruise states
+            if "Cruise" in config.name and not "Break" in config.name:
                 state_payment = self.current_state_salary * config.payment_fraction
         
         # Add payment to total
@@ -128,7 +128,7 @@ class CruiseCareerSequence:
             'state_index': current_index,
             'state_name': self.state_configs[current_index].name if current_index < self.num_states else f"State {current_index}",
             'state_duration': self.state_configs[current_index].duration_months if current_index < self.num_states else 0,
-            'current_state_salary': self.state_salaries[-1] if self.state_salaries else 0.0,
+            'current_state_salary': self.current_state_salary if not "Break" in self.state_configs[current_index].name else 0.0,
             'state_payment': state_payment,
             'payment_fraction': self.state_configs[current_index].payment_fraction if current_index < self.num_states else 0,
             'total_training_costs': self.total_training_costs,
@@ -451,11 +451,14 @@ def print_simulation_summary(results: Dict[str, Any]) -> None:
     elif results['completed']:
         print("Status: Completed all states")
     
+    # Calculate total payments from state-by-state data
+    total_payments = sum(results['state_payments'])
+    
     # Financial Summary
     print("\nFinancial Summary:")
     print(f"Total Training Costs: ${metrics['total_training_costs']:,.2f}")
-    print(f"Total Payments Made: ${metrics['total_payments']:,.2f}")
-    print(f"Net Returns: ${metrics['net_returns']:,.2f}")
+    print(f"Total Payments Made: ${total_payments:,.2f}")
+    print(f"Net Returns: ${total_payments - metrics['total_training_costs']:,.2f}")
     
     # Performance Metrics
     print("\nPerformance Metrics:")
@@ -886,9 +889,7 @@ if __name__ == "__main__":
     
     # Run all scenarios
     configs = {
-        "Baseline": BASELINE_CONFIG,
-        "Optimistic": OPTIMISTIC_CONFIG,
-        "Pessimistic": PESSIMISTIC_CONFIG
+        "Baseline": DEFAULT_CONFIG
     }
     
     for name, config in configs.items():
@@ -898,11 +899,11 @@ if __name__ == "__main__":
     
     # Run detailed state transition analysis for baseline scenario
     print("\nAnalyzing state transitions and dropout patterns for baseline scenario...")
-    analyze_state_transitions(BASELINE_CONFIG, num_simulations=500)
+    analyze_state_transitions(DEFAULT_CONFIG, num_simulations=500)
     
     # Example of running a single simulation with baseline config
     print("\nRunning a single simulation example with baseline configuration:")
-    baseline_state_configs = BASELINE_CONFIG.create_state_configs()
+    baseline_state_configs = DEFAULT_CONFIG.create_state_configs()
     single_result = run_simulation(state_configs=baseline_state_configs, random_seed=42)
     print_simulation_summary(single_result)
     

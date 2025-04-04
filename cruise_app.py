@@ -501,18 +501,6 @@ app.layout = html.Div([
                                 dcc.Tab(label='Overview', children=[
                                     html.Div(id="overview-content")
                                 ]),
-                                dcc.Tab(label='State Progression', children=[
-                                    html.Div(id="state-progression-content")
-                                ]),
-                                dcc.Tab(label='Monthly Metrics', children=[
-                                    html.Div(id="monthly-metrics-content")
-                                ]),
-                                dcc.Tab(label='Detailed Data', children=[
-                                    html.Div(id="detailed-data")
-                                ]),
-                                dcc.Tab(label='State Tracking', children=[
-                                    html.Div(id="state-tracking-content")
-                                ]),
                                 dcc.Tab(label='Scenario Comparison', children=[
                                     html.Div([
                                         html.H4("Compare Saved Scenarios", style={'marginBottom': '15px'}),
@@ -584,9 +572,6 @@ app.layout = html.Div([
                                         html.Div(id="scenario-comparison-results")
                                     ])
                                 ]),
-                                dcc.Tab(label='Active Students', children=[
-                                    html.Div(id="active-students-content")
-                                ])
                             ], style={'marginTop': '20px'})
                         ])
                     ], style={'width': '65%', 'display': 'inline-block', 'padding': '20px', 'boxShadow': '0 4px 8px 0 rgba(0,0,0,0.2)', 'backgroundColor': '#f9f9f9', 'borderRadius': '8px'})
@@ -957,6 +942,10 @@ def run_simulation_callback(n_clicks, config_data):
                     # Ensure the 'name' key holds the simple string name
                     cleaned_state_data['name'] = actual_name
                     
+                    # Explicitly preserve avg_state_salary as avg_salary for the overview tab
+                    if 'avg_state_salary' in metric_info:
+                        cleaned_state_data['avg_salary'] = metric_info['avg_state_salary']
+                    
                 elif isinstance(metric_info, str): # Handle case where metric is just a name
                      cleaned_state_data['name'] = metric_info
                      cleaned_state_data['avg_salary'] = 0
@@ -1090,634 +1079,22 @@ def update_overview_content(results):
     if not results:
         return "Run a simulation to see results"
 
-    # Extract data (state_metrics should be pre-cleaned)
-    # state_distribution = results.get('state_distribution', {}) # No longer used for main table
-    state_metrics = results.get('state_metrics', {})
-    config = results.get('config', {})
-
-    # Calculate progression data using the helper function
-    progression_data = calculate_progression_data(state_metrics, config)
-
-    # Prepare data for state progression table
-    progression_table_data = [
-        {
-            "State": row['state'],
-            "Entered": row['entered'],
-            "Completed": row['completed'],
-            "Dropouts": row['dropouts'],
-            "Dropout Rate (%)": f"{row['dropout_rate']:.1f}"
-        }
-        for row in progression_data
-    ]
-
-    # Create state progression table
-    progression_table = html.Div([
-        html.H5("State Progression (Based on Configured Rates)", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        dash_table.DataTable(
-            data=progression_table_data,
-            columns=[
-                {"name": "State", "id": "State"},
-                {"name": "Entered", "id": "Entered"},
-                {"name": "Completed", "id": "Completed"},
-                {"name": "Dropouts", "id": "Dropouts"},
-                {"name": "Dropout Rate (%)", "id": "Dropout Rate (%)"}
-            ],
-            style_cell={'textAlign': 'center', 'padding': '10px'},
-            style_header={
-                'backgroundColor': 'rgb(230, 230, 230)',
-                'fontWeight': 'bold'
-            },
-            style_data_conditional=[
-                {
-                    'if': {'row_index': 'odd'},
-                    'backgroundColor': 'rgb(248, 248, 248)'
-                }
-            ]
-        )
-    ], style={'marginBottom': '30px'})
-
-    # Create state metrics table (using metrics from progression data)
-    metrics_rows = [
-        {
-            "State": row['state'],
-            "Avg Salary": f"${row['avg_salary']:.2f}",
-            "Avg Payment": f"${row['avg_payment']:.2f}",
-            "Active Months": row['active_months']
-        }
-        for row in progression_data if row['active_months'] > 0 # Only show states with activity
-    ]
-    # No need to sort again, as progression_data is already sorted
-
-    metrics_table = html.Div([
-        html.H5("State Financial Metrics (Average)", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        dash_table.DataTable(
-            data=metrics_rows,
-            columns=[
-                {"name": "State", "id": "State"},
-                {"name": "Avg Salary", "id": "Avg Salary"},
-                {"name": "Avg Payment", "id": "Avg Payment"},
-                {"name": "Active Months", "id": "Active Months"}
-            ],
-            style_cell={'textAlign': 'center', 'padding': '10px'},
-            style_header={
-                'backgroundColor': 'rgb(230, 230, 230)',
-                'fontWeight': 'bold'
-            },
-            style_data_conditional=[
-                {
-                    'if': {'row_index': 'odd'},
-                    'backgroundColor': 'rgb(248, 248, 248)'
-                }
-            ]
-        )
-    ])
-
-    # Combine elements
-    return html.Div([
-        html.H4("Simulation Overview", style={'textAlign': 'center', 'marginBottom': '20px'}),
-        progression_table, # Show progression table instead of final distribution
-        metrics_table
-    ])
-
-# Callback to update detailed data
-@app.callback(
-    Output("detailed-data", "children"),
-    [Input("simulation-results-store", "data")]
-)
-def update_detailed_data(results):
-    if not results:
-        return "Run a simulation to see results"
-    
-    # Extract config data
-    config = results.get('config', {})
-    
-    # Create config table
-    config_data = [
-        {"Parameter": "Basic Training Cost", "Value": f"${config.get('basic_training_cost', 0):.2f}"},
-        {"Parameter": "Basic Training Dropout Rate", "Value": f"{config.get('basic_training_dropout_rate', 0)*100:.1f}%"},
-        {"Parameter": "Basic Training Duration", "Value": f"{config.get('basic_training_duration', 0)} months"},
-        {"Parameter": "Include Advanced Training", "Value": "Yes" if config.get('include_advanced_training', True) else "No"}
-    ]
-    
-    if config.get('include_advanced_training', True):
-        config_data.extend([
-            {"Parameter": "Advanced Training Cost", "Value": f"${config.get('advanced_training_cost', 0):.2f}"},
-            {"Parameter": "Advanced Training Dropout Rate", "Value": f"{config.get('advanced_training_dropout_rate', 0)*100:.1f}%"},
-            {"Parameter": "Advanced Training Duration", "Value": f"{config.get('advanced_training_duration', 0)} months"}
-        ])
-    
-    config_data.extend([
-        {"Parameter": "Number of Additional Cruises", "Value": f"{config.get('num_additional_cruises', 0)}"},
-        {"Parameter": "First Cruise Base Salary", "Value": f"${config.get('first_cruise_base_salary', 0):.2f}"},
-        {"Parameter": "First Cruise Dropout Rate", "Value": f"{config.get('first_cruise_dropout_rate', 0)*100:.1f}%"},
-        {"Parameter": "First Cruise Salary Variation", "Value": f"{config.get('first_cruise_salary_variation', 0):.1f}%"},
-        {"Parameter": "First Cruise Duration", "Value": f"{config.get('first_cruise_duration', 0)} months"},
-        {"Parameter": "First Cruise Payment Fraction", "Value": f"{config.get('first_cruise_payment_fraction', 0)*100:.1f}%"},
-        {"Parameter": "Include Breaks Between Cruises", "Value": "Yes" if config.get('include_breaks', True) else "No"}
-    ])
-    
-    if config.get('include_breaks', True):
-        config_data.extend([
-            {"Parameter": "Break Duration", "Value": f"{config.get('break_duration', 0)} months"},
-            {"Parameter": "Break Dropout Rate", "Value": f"{config.get('break_dropout_rate', 0)*100:.1f}%"}
-        ])
-    
-    config_data.extend([
-        {"Parameter": "Subsequent Cruise Dropout Rate", "Value": f"{config.get('subsequent_cruise_dropout_rate', 0)*100:.1f}%"},
-        {"Parameter": "Subsequent Cruise Salary Increase", "Value": f"{config.get('subsequent_cruise_salary_increase', 0):.1f}%"},
-        {"Parameter": "Subsequent Cruise Salary Variation", "Value": f"{config.get('subsequent_cruise_salary_variation', 0):.1f}%"},
-        {"Parameter": "Subsequent Cruise Duration", "Value": f"{config.get('subsequent_cruise_duration', 0)} months"},
-        {"Parameter": "Subsequent Cruise Payment Fraction", "Value": f"{config.get('subsequent_cruise_payment_fraction', 0)*100:.1f}%"}
-    ])
-    
-    config_table = html.Div([
-        html.H5("Simulation Configuration", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        dash_table.DataTable(
-            data=config_data,
-            columns=[
-                {"name": "Parameter", "id": "Parameter"},
-                {"name": "Value", "id": "Value"}
-            ],
-            style_cell={'textAlign': 'left', 'padding': '10px'},
-            style_header={
-                'backgroundColor': 'rgb(230, 230, 230)',
-                'fontWeight': 'bold'
-            },
-            style_data_conditional=[
-                {
-                    'if': {'row_index': 'odd'},
-                    'backgroundColor': 'rgb(248, 248, 248)'
-                }
-            ]
-        )
-    ], style={'marginBottom': '30px'})
-    
-    # Create ROI metrics table
-    roi_data = [
-        {"Metric": "Average Training Cost", "Value": f"${results.get('avg_training_cost', 0):.2f}"},
-        {"Metric": "Average Total Payments", "Value": f"${results.get('avg_total_payments', 0):.2f}"},
-        {"Metric": "Average Net Cash Flow", "Value": f"${results.get('avg_net_cash_flow', 0):.2f}"},
-        {"Metric": "Average ROI", "Value": f"{results.get('avg_roi', 0):.1f}%"},
-        {"Metric": "ROI Standard Deviation", "Value": f"{results.get('roi_std', 0):.1f}%"},
-        {"Metric": "ROI 10th Percentile", "Value": f"{results.get('roi_10th', 0):.1f}%"},
-        {"Metric": "ROI 90th Percentile", "Value": f"{results.get('roi_90th', 0):.1f}%"},
-        {"Metric": "Simple Annual IRR (Simplified)", "Value": f"{results.get('avg_annual_irr', 0):.1f}%" if results.get('avg_annual_irr') is not None else "N/A"},
-        {"Metric": "Monthly-Based Annual IRR", "Value": f"{results.get('avg_monthly_irr', 0):.1f}%" if results.get('avg_monthly_irr') is not None else "N/A"}
-    ]
-    
-    roi_table = html.Div([
-        html.H5("Financial Metrics", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        dash_table.DataTable(
-            data=roi_data,
-            columns=[
-                {"name": "Metric", "id": "Metric"},
-                {"name": "Value", "id": "Value"}
-            ],
-            style_cell={'textAlign': 'left', 'padding': '10px'},
-            style_header={
-                'backgroundColor': 'rgb(230, 230, 230)',
-                'fontWeight': 'bold'
-            },
-            style_data_conditional=[
-                {
-                    'if': {'row_index': 'odd'},
-                    'backgroundColor': 'rgb(248, 248, 248)'
-                }
-            ]
-        )
-    ])
-    
-    return html.Div([
-        html.H4("Detailed Simulation Data", style={'textAlign': 'center', 'marginBottom': '20px'}),
-        config_table,
-        roi_table
-    ])
-
-# Callback to update state tracking content
-@app.callback(
-    Output("state-tracking-content", "children"),
-    [Input("simulation-results-store", "data")]
-)
-def update_state_tracking(results):
-    if not results:
-        return "Run a simulation to see results"
-
-    # Extract the new aggregated data and state names
-    state_metrics = results.get('state_metrics', {}) # Primarily used for state names now
-    state_total_costs = results.get('state_total_costs', {})
-    state_total_payments = results.get('state_total_payments', {})
-    state_entry_counts = results.get('state_entry_counts', {})
-    config = results.get('config', {})
-    num_simulations = config.get('num_students', 0)
-
-    # --- Process Aggregated Data ---
-    state_data = []
-    state_names_ordered = []
-    # Ensure states are processed in the correct order (0, 1, 2, ...)
-    # Handle potential string keys from JSON serialization
-    max_state_idx = -1
-    if state_metrics:
-        try:
-            # Get numeric keys, find max, handle empty dict case
-            numeric_keys = [int(k) for k in state_metrics.keys() if k.isdigit()]
-            if numeric_keys:
-                max_state_idx = max(numeric_keys)
-            else: # If no numeric keys (e.g., only names were stored), handle gracefully
-                 max_state_idx = -1 # Or try another way to determine max state if possible
-        except ValueError:
-            # Handle cases where keys might not be convertible to int
-            print("Warning: Could not determine max state index from state_metrics keys.")
-            max_state_idx = -1 # Fallback
-
-    # If max_state_idx is still -1, try getting it from other dicts if they exist
-    if max_state_idx == -1:
-         all_keys = list(state_total_costs.keys()) + list(state_total_payments.keys()) + list(state_entry_counts.keys())
-         numeric_keys = [int(k) for k in all_keys if k.isdigit()]
-         if numeric_keys:
-             max_state_idx = max(numeric_keys)
-
-    if max_state_idx == -1: # Still couldn't determine, maybe no states?
-        return "Could not determine state order from simulation results."
-
-    for state_idx in range(max_state_idx + 1):
-        state_idx_str = str(state_idx)
-
-        # Get state name safely from state_metrics
-        state_name = f"State {state_idx_str}" # Default
-        if state_idx_str in state_metrics and isinstance(state_metrics.get(state_idx_str), dict):
-            name_raw = state_metrics[state_idx_str].get('name')
-            if isinstance(name_raw, str):
-                state_name = name_raw
-        elif state_idx_str in state_metrics and isinstance(state_metrics.get(state_idx_str), str):
-             # Handle case where state_metrics[idx] is just the name string
-             state_name = state_metrics[state_idx_str]
-
-        # If advanced training is disabled, skip its state entry in the table/chart
-        if "Advanced Training" in state_name and not config.get('include_advanced_training', True):
-            continue
-
-        # Get aggregated values safely (default to 0 if key missing)
-        total_cost = state_total_costs.get(state_idx_str, 0.0)
-        total_payment = state_total_payments.get(state_idx_str, 0.0)
-        entry_count = state_entry_counts.get(state_idx_str, 0)
-
-        # Only add state to table/chart if it was entered by at least one simulation
-        if entry_count > 0:
-            state_names_ordered.append(state_name)
-            net_cash_flow = total_payment - total_cost
-
-            state_data.append({
-                "State": state_name,
-                "Total Costs": total_cost,
-                "Total Payments": total_payment,
-                "Net Cash Flow": net_cash_flow,
-                "Simulations Entered": entry_count,
-                "Entry Rate (%)": (entry_count / num_simulations * 100) if num_simulations > 0 else 0
-            })
-        # If entry_count is 0, we might still want to show it with 0s, or omit it.
-        # Current logic omits states never entered. Add an else block here if you want to show them.
-
-    # --- Create Aggregated Results Table ---
-    tracking_table = html.Div([
-        html.H5("Aggregated Results by State (From Simulations)", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        dash_table.DataTable(
-            id='aggregate-state-table',
-            data=state_data,
-            columns=[
-                {"name": "State", "id": "State"},
-                {"name": "Simulations Entered", "id": "Simulations Entered", 'type': 'numeric'},
-                {"name": "Entry Rate (%)", "id": "Entry Rate (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
-                {"name": "Total Costs", "id": "Total Costs", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-                {"name": "Total Payments", "id": "Total Payments", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-                {"name": "Net Cash Flow", "id": "Net Cash Flow", 'type': 'numeric', 'format': {'specifier': '$,.2f'}}
-            ],
-            style_cell={'textAlign': 'center', 'padding': '10px'},
-            style_header={
-                'backgroundColor': 'rgb(230, 230, 230)',
-                'fontWeight': 'bold'
-            },
-            style_data_conditional=[
-                {
-                    'if': {'row_index': 'odd'},
-                    'backgroundColor': 'rgb(248, 248, 248)'
-                },
-                {
-                    'if': {'filter_query': '{Net Cash Flow} < 0'},
-                    'color': 'red'
-                },
-                {
-                    'if': {'filter_query': '{Net Cash Flow} > 0'},
-                    'color': 'green'
-                }
-            ]
-        )
-    ])
-
-    # --- Calculate Overall Summary Metrics from Aggregates ---
-    # Ensure we only sum states that were actually added to state_data (i.e., entered)
-    overall_total_costs = sum(item["Total Costs"] for item in state_data)
-    overall_total_payments = sum(item["Total Payments"] for item in state_data)
-    overall_net_cash_flow = overall_total_payments - overall_total_costs
-
-    # --- Create Overall Cash Flow Summary ---
-    cash_flow_summary = html.Div([
-        html.H5("Overall Cash Flow Summary (Aggregated from Simulations)", style={'textAlign': 'center', 'marginTop': '30px', 'marginBottom': '15px'}),
-        html.Div([
-            html.Div([
-                html.P("Total Training Costs:", style={'fontWeight': 'bold'}),
-                html.P(f"${overall_total_costs:,.2f}", style={'color': 'red'}) # Use comma formatting
-            ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'}),
-
-            html.Div([
-                html.P("Total Payments Received:", style={'fontWeight': 'bold'}),
-                html.P(f"${overall_total_payments:,.2f}", style={'color': 'green'}) # Use comma formatting
-            ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'}),
-
-            html.Div([
-                html.P("Net Cash Flow:", style={'fontWeight': 'bold'}),
-                html.P(f"${overall_net_cash_flow:,.2f}",
-                      style={'color': 'green' if overall_net_cash_flow >= 0 else 'red'}) # Use comma formatting
-            ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'})
-        ], style={'border': '1px solid #ddd', 'padding': '15px', 'borderRadius': '5px', 'backgroundColor': '#f9f9f9'})
-    ])
-
-    # --- Create Aggregated Cash Flow Visualization ---
-    cash_flow_fig = go.Figure()
-    if state_data: # Only create chart if there is data
-        state_net_flows = [item['Net Cash Flow'] for item in state_data]
-        valid_state_names = [item['State'] for item in state_data] # Get names corresponding to actual data
-
-        cash_flow_fig.add_trace(go.Bar(
-            x=valid_state_names, # Use names for states that were entered
-            y=state_net_flows,
-            name="Total Net Cash Flow by State",
-            marker_color=['red' if cf < 0 else ('green' if cf > 0 else 'grey') for cf in state_net_flows],
-            text=[f"${abs(cf):,.2f}" if cf != 0 else "" for cf in state_net_flows], # Use comma formatting
-            textposition='auto'
-        ))
-
-        cash_flow_fig.update_layout(
-            title='Total Net Cash Flow by State (Aggregated from Simulations)',
-            xaxis_title='State',
-            yaxis_title='Total Net Cash Flow ($)',
-            template='plotly_white'
-        )
-        cash_flow_graph = html.Div([
-            html.H5("Cash Flow Visualization (Simulation Aggregates)", style={'textAlign': 'center', 'marginTop': '30px', 'marginBottom': '15px'}),
-            dcc.Graph(figure=cash_flow_fig)
-        ])
-    else:
-        cash_flow_graph = html.Div([
-             html.H5("Cash Flow Visualization (Simulation Aggregates)", style={'textAlign': 'center', 'marginTop': '30px', 'marginBottom': '15px'}),
-             html.P("No state data available to display chart.", style={'textAlign': 'center'})
-        ])
-
-
-    # --- Combine Components ---
-    return html.Div([
-        html.H4("State Financial Tracking (Simulation Aggregates)", style={'textAlign': 'center', 'marginBottom': '20px'}),
-        html.P("This tab shows the aggregated financial results for each state across all simulations:",
-               style={'marginBottom': '15px'}),
-        html.Ul([
-            html.Li("Simulations Entered: Number of simulations that entered this state at least once."),
-            html.Li("Entry Rate (%): Percentage of total simulations that entered this state."),
-            html.Li("Total Costs: Sum of all training costs attributed to this state across relevant simulations."),
-            html.Li("Total Payments: Sum of all payments received while simulations were in this state."),
-            html.Li("Net Cash Flow: Total Payments - Total Costs for this state.")
-        ], style={'marginBottom': '20px'}),
-        tracking_table,
-        cash_flow_summary,
-        cash_flow_graph
-    ])
-
-# Callback for the Monthly Metrics content
-@app.callback(
-    Output("monthly-metrics-content", "children"),
-    [Input("simulation-results-store", "data")]
-)
-def update_monthly_metrics(results):
-    if not results:
-        return "Run a simulation to see results"
-    
-    state_metrics = results.get('state_metrics', {})
-        
-    # *** Start - Explicit Name Extraction Logic ***
-    metrics_data = []
-    for state_idx_str, metric_info in sorted(state_metrics.items(), key=lambda item: int(item[0])):
-        # Default values
-        state_name = f"State {state_idx_str}"
-        avg_salary = 0
-        avg_payment = 0
-        active_months = 0
-
-        # Try extracting data, focusing on getting the simple name string
-        if isinstance(metric_info, dict):
-            # Attempt to get the simple name string
-            name_raw = metric_info.get('name')
-            if isinstance(name_raw, str):
-                state_name = name_raw
-            elif isinstance(name_raw, dict) and isinstance(name_raw.get('name'), str):
-                 state_name = name_raw['name'] # Handle potential nested dict { 'name': { 'name': 'Actual Name' } }
-            
-            # Get other metrics safely
-            avg_salary = metric_info.get('avg_salary', 0)
-            avg_payment = metric_info.get('avg_payment', 0)
-            active_months = metric_info.get('active_months', 0)
-            
-            avg_salary = avg_salary if isinstance(avg_salary, (int, float)) else 0
-            avg_payment = avg_payment if isinstance(avg_payment, (int, float)) else 0
-            active_months = active_months if isinstance(active_months, (int, float)) else 0
-            
-        elif isinstance(metric_info, str):
-             # Handle case where the entire metric_info is just the name string
-             state_name = metric_info
-
-        metrics_data.append({
-            'state': state_name, # Ensure this holds the simple string
-            'avg_monthly_salary': avg_salary,
-            'avg_monthly_payment': avg_payment,
-            'active_months': int(active_months)
-        })
-    # *** End - Explicit Name Extraction Logic ***
-
-    # Create the table using the processed metrics_data
-    salary_table = dash_table.DataTable(
-        id='monthly-metrics-table',
-        columns=[
-            {'name': 'State', 'id': 'state'},
-            {'name': 'Avg Monthly Salary', 'id': 'avg_monthly_salary', 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-            {'name': 'Avg Monthly Payment', 'id': 'avg_monthly_payment', 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-            {'name': 'Active Months', 'id': 'active_months', 'type': 'numeric'}
-        ],
-        data=metrics_data, # data should now contain correct 'state' strings
-        style_cell={'textAlign': 'center', 'padding': '10px'},
-        style_header={
-            'backgroundColor': 'rgb(230, 230, 230)',
-            'fontWeight': 'bold'
-        },
-        style_data_conditional=[
-            {
-                'if': {'row_index': 'odd'},
-                'backgroundColor': 'rgb(248, 248, 248)'
-            }
-        ]
-    )
-    
-    # Create graphs using the processed metrics_data
-    states = [item['state'] for item in metrics_data]
-    salaries = [item['avg_monthly_salary'] for item in metrics_data]
-    payments = [item['avg_monthly_payment'] for item in metrics_data]
-    active_months_list = [item['active_months'] for item in metrics_data]
-    
-    comparison_fig = go.Figure()
-    comparison_fig.add_trace(go.Bar(x=states, y=salaries, name='Average Monthly Salary', marker_color='#2196F3'))
-    comparison_fig.add_trace(go.Bar(x=states, y=payments, name='Average Monthly Payment', marker_color='#4CAF50'))
-    # ... Add Scatter trace for payment percentage ...
-    payment_percentages = [(p / s * 100) if s > 0 else 0 for s, p in zip(salaries, payments)]
-    comparison_fig.add_trace(go.Scatter(x=states, y=payment_percentages, name='Payment Percentage', mode='lines+markers', yaxis='y2', line=dict(color='#FFC107')))
-    comparison_fig.update_layout(
-        title='Monthly Salary and Payment Comparison', xaxis_title='State', yaxis_title='Amount ($)', 
-        yaxis2=dict(title='Payment Percentage', overlaying='y', side='right', range=[0, 30], ticksuffix='%'),
-        barmode='group', template='plotly_white',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-    )
-
-    months_fig = go.Figure()
-    months_fig.add_trace(go.Bar(x=states, y=active_months_list, name='Active Months', marker_color='#9C27B0'))
-    months_fig.update_layout(title='Active Months by State', xaxis_title='State', yaxis_title='Number of Months', template='plotly_white')
-
-    # Return layout including the table and graphs
-    return html.Div([
-        html.H4("Monthly Metrics Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
-        html.P("This analysis shows the average monthly salary and payments by state:"),
-        html.H5("Monthly Salary and Payment Data", style={'textAlign': 'center', 'marginBottom': '15px', 'marginTop': '20px'}),
-        salary_table,
-        dcc.Graph(figure=comparison_fig, style={'marginTop': '30px'}),
-        dcc.Graph(figure=months_fig, style={'marginTop': '30px'}),
-        # final_state_distribution can be added back if needed
-    ])
-
-# Callback for the Active Students content -> Renamed to "Progression Summary" conceptually
-@app.callback(
-    Output("active-students-content", "children"),
-    [Input("simulation-results-store", "data")]
-)
-def update_active_students(results): # Function name kept for consistency, but content changed
-    if not results:
-        return "Run a simulation to see results"
-
     # Extract data
     state_metrics = results.get('state_metrics', {})
     config = results.get('config', {})
+    state_total_costs = results.get('state_total_costs', {})
+    state_total_payments = results.get('state_total_payments', {})
+    state_entry_counts = results.get('state_entry_counts', {})
+    num_simulations = config.get('num_students', 0)
 
     # Calculate progression data using the helper function
     progression_data = calculate_progression_data(state_metrics, config)
 
-    # Create data for the progression summary table
-    summary_table_data = [
-        {
-            'State': item['state'],
-            'Entered': item['entered'],
-            'Completed': item['completed'],
-            'Dropouts': item['dropouts'],
-            '% Dropout': f"{item['dropout_rate']:.1f}%" # Show dropout rate
-            # Removed Avg Salary/Payment as it's less relevant to pure progression
-        }
-        for item in progression_data
-    ]
-
-    # Create the progression summary table
-    summary_table = dash_table.DataTable(
-        id='progression-summary-table', # New ID
-        columns=[
-            {'name': 'State', 'id': 'State'},
-            {'name': 'Entered', 'id': 'Entered', 'type': 'numeric'},
-            {'name': 'Completed', 'id': 'Completed', 'type': 'numeric'},
-            {'name': 'Dropouts', 'id': 'Dropouts', 'type': 'numeric'},
-            {'name': '% Dropout', 'id': '% Dropout'}
-        ],
-        data=summary_table_data,
-        style_cell={'textAlign': 'center', 'padding': '10px'},
-        style_header={
-            'backgroundColor': 'rgb(230, 230, 230)',
-            'fontWeight': 'bold'
-        },
-        style_data_conditional=[
-            {
-                'if': {'row_index': 'odd'},
-                'backgroundColor': 'rgb(248, 248, 248)'
-            }
-        ]
-    )
-
-    # Create a Sankey diagram for visualization
-    # Prepare data for Sankey
-    labels = [row['state'] for row in progression_data] + [f"Dropout ({row['state']})" for row in progression_data if row['dropouts'] > 0]
-    label_indices = {label: i for i, label in enumerate(labels)}
-
-    source = []
-    target = []
-    value = []
-    link_colors = [] # Optional: Color links
-
-    for i, row in enumerate(progression_data):
-        current_state_label = row['state']
-        current_state_idx = label_indices[current_state_label]
-
-        # Link from previous state (if exists)
-        if i > 0:
-             # This assumes the 'entered' of current is the 'completed' of previous
-             # We actually want to link the 'entered' amount
-             prev_state_label = progression_data[i-1]['state']
-             prev_state_idx = label_indices[prev_state_label]
-             # Link from previous completed to current entered is complex,
-             # Let's simplify: Link from state to next state (completed amount) and state to dropout
-        #else: # First state entry - link from a virtual 'Start' node? Let's omit for now.
-             #pass # Or add a 'Start' node: labels.append('Start'); label_indices['Start'] = len(labels)-1
-
-        # Link to next state (Completed)
-        if i < len(progression_data) - 1:
-            next_state_label = progression_data[i+1]['state']
-            next_state_idx = label_indices[next_state_label]
-            if row['completed'] > 0:
-                source.append(current_state_idx)
-                target.append(next_state_idx)
-                value.append(row['completed'])
-                link_colors.append("rgba(55, 183, 109, 0.6)") # Greenish for completion
-
-        # Link to Dropout state for this stage
-        if row['dropouts'] > 0:
-            dropout_label = f"Dropout ({row['state']})"
-            dropout_state_idx = label_indices[dropout_label]
-            source.append(current_state_idx)
-            target.append(dropout_state_idx)
-            value.append(row['dropouts'])
-            link_colors.append("rgba(219, 64, 82, 0.6)") # Reddish for dropouts
-
-    sankey_fig = go.Figure(data=[go.Sankey(
-        node=dict(
-            pad=15,
-            thickness=20,
-            line=dict(color="black", width=0.5),
-            label=labels,
-            color="blue" # Default node color
-        ),
-        link=dict(
-            source=source,
-            target=target,
-            value=value,
-            color=link_colors # Apply link colors
-        ))])
-
-    sankey_fig.update_layout(title_text="Student Progression Flow (Estimated)", font_size=10)
-
-
-    # Keep overall summary stats (Completion/Dropout Rate)
+    # Create summary stats boxes
     summary_stats_boxes = html.Div([
         html.H5("Overall Simulation Outcomes", style={'textAlign': 'center', 'marginBottom': '15px'}),
         html.Div([
-             # We can still show the overall rates from the simulation results
-             html.Div([
+            html.Div([
                 html.H5("Completion Rate", style={'textAlign': 'center', 'marginBottom': '10px'}),
                 html.Div(f"{results.get('completion_rate', 0):.1f}%", style={
                     'fontSize': '24px',
@@ -1737,18 +1114,194 @@ def update_active_students(results): # Function name kept for consistency, but c
         ], style={'marginBottom': '20px'})
     ])
 
+    # Create Sankey diagram for student flow
+    labels = [row['state'] for row in progression_data] + [f"Dropout ({row['state']})" for row in progression_data if row['dropouts'] > 0]
+    label_indices = {label: i for i, label in enumerate(labels)}
 
-    # Return combined layout
+    source = []
+    target = []
+    value = []
+    link_colors = []
+
+    for i, row in enumerate(progression_data):
+        current_state_label = row['state']
+        current_state_idx = label_indices[current_state_label]
+
+        if i < len(progression_data) - 1:
+            next_state_label = progression_data[i+1]['state']
+            next_state_idx = label_indices[next_state_label]
+            if row['completed'] > 0:
+                source.append(current_state_idx)
+                target.append(next_state_idx)
+                value.append(row['completed'])
+                link_colors.append("rgba(55, 183, 109, 0.6)")
+
+        if row['dropouts'] > 0:
+            dropout_label = f"Dropout ({row['state']})"
+            dropout_state_idx = label_indices[dropout_label]
+            source.append(current_state_idx)
+            target.append(dropout_state_idx)
+            value.append(row['dropouts'])
+            link_colors.append("rgba(219, 64, 82, 0.6)")
+
+    sankey_fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=labels,
+            color="blue"
+        ),
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+            color=link_colors
+        ))])
+
+    sankey_fig.update_layout(title_text="Student Progression Flow", font_size=10)
+
+    # Process state financial data
+    state_data = []
+    for state_idx_str, metrics in sorted(state_metrics.items(), key=lambda x: int(x[0])):
+        if isinstance(metrics, dict):
+            state_name = metrics.get('name', f"State {state_idx_str}")
+            
+            # Skip advanced training state if disabled
+            if "Advanced Training" in state_name and not config.get('include_advanced_training', True):
+                continue
+
+            total_cost = state_total_costs.get(state_idx_str, 0.0)
+            total_payment = state_total_payments.get(state_idx_str, 0.0)
+            entry_count = state_entry_counts.get(state_idx_str, 0)
+
+            if entry_count > 0:
+                net_cash_flow = total_payment - total_cost
+                state_data.append({
+                    "State": state_name,
+                    "Total Costs": total_cost,
+                    "Total Payments": total_payment,
+                    "Net Cash Flow": net_cash_flow,
+                    "Simulations Entered": entry_count,
+                    "Entry Rate (%)": (entry_count / num_simulations * 100) if num_simulations > 0 else 0
+                })
+
+    # Calculate overall financials
+    overall_total_costs = sum(item["Total Costs"] for item in state_data)
+    overall_total_payments = sum(item["Total Payments"] for item in state_data)
+    overall_net_cash_flow = overall_total_payments - overall_total_costs
+
+    # Create financial summary boxes
+    financial_summary = html.Div([
+        html.H5("Overall Financial Summary", style={'textAlign': 'center', 'marginBottom': '15px'}),
+        html.Div([
+            html.Div([
+                html.P("Total Training Costs:", style={'fontWeight': 'bold'}),
+                html.P(f"${overall_total_costs:,.2f}", style={'color': 'red'})
+            ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'}),
+
+            html.Div([
+                html.P("Total Payments Received:", style={'fontWeight': 'bold'}),
+                html.P(f"${overall_total_payments:,.2f}", style={'color': 'green'})
+            ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'}),
+
+            html.Div([
+                html.P("Net Cash Flow:", style={'fontWeight': 'bold'}),
+                html.P(f"${overall_net_cash_flow:,.2f}",
+                      style={'color': 'green' if overall_net_cash_flow >= 0 else 'red'})
+            ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'})
+        ], style={'border': '1px solid #ddd', 'padding': '15px', 'borderRadius': '5px', 'backgroundColor': '#f9f9f9'})
+    ])
+
+    # Create cash flow visualization
+    cash_flow_fig = go.Figure()
+    if state_data:
+        state_net_flows = [item['Net Cash Flow'] for item in state_data]
+        valid_state_names = [item['State'] for item in state_data]
+
+        cash_flow_fig.add_trace(go.Bar(
+            x=valid_state_names,
+            y=state_net_flows,
+            name="Net Cash Flow by State",
+            marker_color=['red' if cf < 0 else ('green' if cf > 0 else 'grey') for cf in state_net_flows],
+            text=[f"${abs(cf):,.2f}" if cf != 0 else "" for cf in state_net_flows],
+            textposition='auto'
+        ))
+
+        cash_flow_fig.update_layout(
+            title='Net Cash Flow by State',
+            xaxis_title='State',
+            yaxis_title='Net Cash Flow ($)',
+            template='plotly_white'
+        )
+
+    # Create detailed state metrics table
+    state_metrics_table = dash_table.DataTable(
+        id='state-metrics-table',
+        data=state_data,
+        columns=[
+            {"name": "State", "id": "State"},
+            {"name": "Simulations Entered", "id": "Simulations Entered", 'type': 'numeric'},
+            {"name": "Entry Rate (%)", "id": "Entry Rate (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
+            {"name": "Total Costs", "id": "Total Costs", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
+            {"name": "Total Payments", "id": "Total Payments", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
+            {"name": "Net Cash Flow", "id": "Net Cash Flow", 'type': 'numeric', 'format': {'specifier': '$,.2f'}}
+        ],
+        style_cell={'textAlign': 'center', 'padding': '10px'},
+        style_header={
+            'backgroundColor': 'rgb(230, 230, 230)',
+            'fontWeight': 'bold'
+        },
+        style_data_conditional=[
+            {
+                'if': {'row_index': 'odd'},
+                'backgroundColor': 'rgb(248, 248, 248)'
+            },
+            {
+                'if': {'filter_query': '{Net Cash Flow} < 0'},
+                'color': 'red'
+            },
+            {
+                'if': {'filter_query': '{Net Cash Flow} > 0'},
+                'color': 'green'
+            }
+        ]
+    )
+
+    # Combine all elements
     return html.Div([
-        html.H4("Progression Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}), # Renamed title
-        summary_stats_boxes, # Keep overall summary
-        dcc.Graph(figure=sankey_fig, style={'marginBottom': '30px'}), # Show Sankey diagram
-        html.H5("Progression Summary Data", style={'textAlign': 'center', 'marginBottom': '15px'}), # Renamed
-        html.P([
-            "This table shows the estimated flow of students through the career path stages, ",
-            "based on the dropout rates configured for the simulation."
-        ], style={'marginBottom': '15px'}),
-        summary_table # Show the new summary table
+        html.H4("Simulation Overview", style={'textAlign': 'center', 'marginBottom': '20px'}),
+        
+        # Top section - Summary stats
+        summary_stats_boxes,
+        
+        # Student flow section
+        html.Div([
+            html.H5("Student Progression Flow", style={'textAlign': 'center', 'marginBottom': '15px'}),
+            dcc.Graph(figure=sankey_fig, style={'marginBottom': '30px'})
+        ]),
+        
+        # Financial section
+        html.Div([
+            financial_summary,
+            html.Div([
+                html.H5("Cash Flow by State", style={'textAlign': 'center', 'marginBottom': '15px'}),
+                dcc.Graph(figure=cash_flow_fig, style={'marginBottom': '30px'})
+            ]),
+            html.Div([
+                html.H5("Detailed State Metrics", style={'textAlign': 'center', 'marginBottom': '15px'}),
+                html.P("This table shows detailed metrics for each state in the simulation:",
+                      style={'marginBottom': '15px'}),
+                html.Ul([
+                    html.Li("Simulations Entered: Number of simulations that reached this state"),
+                    html.Li("Entry Rate: Percentage of total simulations that entered the state"),
+                    html.Li("Total Costs: Sum of all costs incurred in this state"),
+                    html.Li("Total Payments: Sum of all payments received in this state"),
+                    html.Li("Net Cash Flow: Difference between payments and costs")
+                ], style={'marginBottom': '15px'}),
+                state_metrics_table
+            ])
+        ])
     ])
 
 # Run the app

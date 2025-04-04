@@ -20,7 +20,6 @@ class SimulationConfig:
     # General simulation parameters
     num_students: int = 100
     random_seed: Optional[int] = None
-    max_months: int = 48
     
     # Training Config
     basic_training_cost: float = 1500
@@ -30,7 +29,7 @@ class SimulationConfig:
     # Transportation and placement Config (optional)
     include_advanced_training: bool = True
     advanced_training_cost: float = 500
-    advanced_training_dropout_rate: float = 0.15  # 15% chance of dropping out during Transportation and placement
+    advanced_training_dropout_rate: float = 0.15  # 5% chance of dropping out during Transportation and placement
     advanced_training_duration: int = 3
     
     # First Cruise Config
@@ -150,83 +149,68 @@ class SimulationConfig:
         
         return states
 
-# Baseline scenario - moderate assumptions
+# Default simulation configuration with moderate assumptions
+DEFAULT_CONFIG = SimulationConfig()
+
+# Baseline configuration - similar to default but with slightly different parameters
 BASELINE_CONFIG = SimulationConfig(
-    # Training parameters
-    basic_training_cost=1500,         # $1500 training cost
-    basic_training_dropout_rate=0.10,    # 10% dropout in training
-    include_advanced_training=True,
-    advanced_training_cost=500,       # $500 transportation and placement cost
-    advanced_training_dropout_rate=0.15,  # 15% dropout in transportation and placement
-    
-    # First cruise parameters
-    first_cruise_base_salary=5000,       # $5000 starting salary
-    first_cruise_dropout_rate=0.03,      # 3% dropout in first cruise
-    first_cruise_salary_variation=6.0,    # ±6% salary variation
-    
-    # Break parameters
-    include_breaks=True,                 # Include breaks between cruises
-    break_duration=2,                    # 2 months duration for breaks
-    break_dropout_rate=0.0,              # 0% dropout during breaks
-    
-    # Subsequent cruise parameters
-    num_additional_cruises=3,            # Total of 4 cruises
-    subsequent_cruise_dropout_rate=0.03,  # 3% dropout per subsequent cruise
-    subsequent_cruise_salary_increase=10.0, # 10% salary increase per cruise
-    subsequent_cruise_salary_variation=5.0  # ±5% variation in increases
+    basic_training_cost=1500,
+    basic_training_dropout_rate=0.10,
+    basic_training_duration=3,
+    advanced_training_cost=500,
+    advanced_training_dropout_rate=0.15,
+    advanced_training_duration=3,
+    first_cruise_base_salary=5000,
+    first_cruise_dropout_rate=0.03,
+    first_cruise_salary_variation=6.0,
+    first_cruise_duration=8,
+    first_cruise_payment_fraction=0.14,
+    num_additional_cruises=3,
+    subsequent_cruise_dropout_rate=0.03,
+    subsequent_cruise_salary_increase=10.0,
+    subsequent_cruise_salary_variation=5.0,
+    subsequent_cruise_duration=8,
+    subsequent_cruise_payment_fraction=0.14
 )
 
-# Optimistic scenario - favorable conditions
+# Optimistic configuration - lower dropout rates, higher salaries
 OPTIMISTIC_CONFIG = SimulationConfig(
-    # Training parameters
-    basic_training_cost=1500,         # $1500 training cost
-    basic_training_dropout_rate=0.08,    # Lower dropout rate
-    include_advanced_training=True,
-    advanced_training_cost=500,       # $500 transportation and placement cost
-    advanced_training_dropout_rate=0.12,  # Lower dropout rate
-    
-    # First cruise parameters
-    first_cruise_base_salary=5500,       # Higher starting salary
-    first_cruise_dropout_rate=0.02,      # Lower dropout rate
-    first_cruise_salary_variation=5.0,    # Less salary variation
-    
-    # Break parameters
-    include_breaks=True,                 # Include breaks between cruises
-    break_duration=2,                    # 2 months duration for breaks
-    break_dropout_rate=0.0,              # 0% dropout during breaks
-    
-    # Subsequent cruise parameters
-    num_additional_cruises=4,            # More cruises
+    basic_training_cost=1500,
+    basic_training_dropout_rate=0.05,  # Lower dropout rate
+    basic_training_duration=3,
+    advanced_training_cost=500,
+    advanced_training_dropout_rate=0.08,  # Lower dropout rate
+    advanced_training_duration=3,
+    first_cruise_base_salary=5000,  # Same
+    first_cruise_dropout_rate=0.02,  # Lower dropout rate
+    first_cruise_salary_variation=4.0,  # Lower variation
+    first_cruise_duration=8,
+    first_cruise_payment_fraction=0.15,  # Higher payment fraction
+    num_additional_cruises=4,  # More cruises
     subsequent_cruise_dropout_rate=0.02,  # Lower dropout rate
-    subsequent_cruise_salary_increase=15.0, # Higher salary increases
-    subsequent_cruise_salary_variation=4.0  # Less variation in increases
+    subsequent_cruise_salary_increase=15.0,  # Higher salary increase
+    subsequent_cruise_salary_variation=4.0,  # Lower variation
+    subsequent_cruise_duration=8,
+    subsequent_cruise_payment_fraction=0.15  # Higher payment fraction
 )
 
-# Pessimistic scenario - challenging conditions
+# Pessimistic configuration - higher dropout rates, lower salaries
 PESSIMISTIC_CONFIG = SimulationConfig(
-    # Training parameters
-    basic_training_cost=1500,         # $1500 training cost
-    basic_training_dropout_rate=0.15,    # Higher dropout rate
-    include_advanced_training=True,
-    advanced_training_cost=500,       # $500 transportation and placement cost
+    basic_training_cost=1500,
+    basic_training_dropout_rate=0.15,  # Higher dropout rate
+    basic_training_duration=3,
+    advanced_training_cost=500,
     advanced_training_dropout_rate=0.20,  # Higher dropout rate
-    
-    # First cruise parameters
-    first_cruise_base_salary=4500,       # Lower starting salary
-    first_cruise_dropout_rate=0.05,      # Higher dropout rate
-    first_cruise_salary_variation=8.0,    # More salary variation
-    
-    # Break parameters
-    include_breaks=True,                 # Include breaks between cruises
-    break_duration=2,                    # 2 months duration for breaks
-    break_dropout_rate=0.0,              # 0% dropout during breaks
-    
-    # Subsequent cruise parameters
-    num_additional_cruises=2,            # Fewer cruises
-    subsequent_cruise_dropout_rate=0.05,  # Higher dropout rate
-    subsequent_cruise_salary_increase=7.0,  # Lower salary increases
-    subsequent_cruise_salary_variation=7.0  # More variation in increases
-)
-
-# Default config is the same as baseline for backward compatibility
-DEFAULT_CONFIG = BASELINE_CONFIG 
+    advanced_training_duration=3,
+    first_cruise_base_salary=4000,  # Lower base salary
+    first_cruise_dropout_rate=0.05,  # Higher dropout rate
+    first_cruise_salary_variation=8.0,  # Higher variation
+    first_cruise_duration=8,
+    first_cruise_payment_fraction=0.12,  # Lower payment fraction
+    num_additional_cruises=2,  # Fewer cruises
+    subsequent_cruise_dropout_rate=0.04,  # Higher dropout rate
+    subsequent_cruise_salary_increase=8.0,  # Lower salary increase
+    subsequent_cruise_salary_variation=7.0,  # Higher variation
+    subsequent_cruise_duration=8,
+    subsequent_cruise_payment_fraction=0.12  # Lower payment fraction
+) 
