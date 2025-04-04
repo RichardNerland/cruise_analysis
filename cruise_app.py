@@ -192,7 +192,7 @@ app.layout = html.Div([
                                 dcc.Input(
                                     id="basic-training-duration",
                                     type="number",
-                                    value=3,
+                                    value=6,
                                     min=1,
                                     max=24,
                                     step=1,
@@ -231,7 +231,7 @@ app.layout = html.Div([
                                     dcc.Input(
                                         id="advanced-training-duration",
                                         type="number",
-                                        value=3,
+                                        value=5,
                                         min=1,
                                         max=24,
                                         step=1,
@@ -299,7 +299,7 @@ app.layout = html.Div([
                                 dcc.Input(
                                     id="first-cruise-duration",
                                     type="number",
-                                    value=8,
+                                    value=6,
                                     min=1,
                                     max=24,
                                     step=1,
@@ -362,7 +362,7 @@ app.layout = html.Div([
                                 dcc.Input(
                                     id="subsequent-cruise-duration",
                                     type="number",
-                                    value=8,
+                                    value=6,
                                     min=1,
                                     max=24,
                                     step=1,
@@ -898,15 +898,15 @@ def run_simulation_callback(n_clicks, config_data):
         include_advanced_training=config_data.get('include_advanced_training', True),
         basic_training_cost=config_data.get('basic_training_cost', 2000),
         basic_training_dropout_rate=config_data.get('basic_training_dropout_rate', 0.15),
-        basic_training_duration=config_data.get('basic_training_duration', 3),
+        basic_training_duration=config_data.get('basic_training_duration', 6),
         advanced_training_cost=config_data.get('advanced_training_cost', 2000),
         advanced_training_dropout_rate=config_data.get('advanced_training_dropout_rate', 0.12),
-        advanced_training_duration=config_data.get('advanced_training_duration', 3),
+        advanced_training_duration=config_data.get('advanced_training_duration', 5),
         num_additional_cruises=config_data.get('num_additional_cruises', 3),
         first_cruise_base_salary=config_data.get('first_cruise_base_salary', 5000),
         first_cruise_dropout_rate=config_data.get('first_cruise_dropout_rate', 0.15),
         first_cruise_salary_variation=config_data.get('first_cruise_salary_variation', 6.0),
-        first_cruise_duration=config_data.get('first_cruise_duration', 8),
+        first_cruise_duration=config_data.get('first_cruise_duration', 6),
         first_cruise_payment_fraction=config_data.get('first_cruise_payment_fraction', 0.14),
         include_breaks=config_data.get('include_breaks', True),
         break_duration=config_data.get('break_duration', 2),
@@ -914,7 +914,7 @@ def run_simulation_callback(n_clicks, config_data):
         subsequent_cruise_dropout_rate=config_data.get('subsequent_cruise_dropout_rate', 0.02),
         subsequent_cruise_salary_increase=config_data.get('subsequent_cruise_salary_increase', 10.0),
         subsequent_cruise_salary_variation=config_data.get('subsequent_cruise_salary_variation', 5.0),
-        subsequent_cruise_duration=config_data.get('subsequent_cruise_duration', 8),
+        subsequent_cruise_duration=config_data.get('subsequent_cruise_duration', 6),
         subsequent_cruise_payment_fraction=config_data.get('subsequent_cruise_payment_fraction', 0.14)
     )
     
@@ -1399,99 +1399,96 @@ def update_monthly_cashflow_content(results):
     if not results:
         return "Run a simulation to see results"
 
-    # Debug information
-    print("\nDEBUG - Monthly Cash Flow Tab:")
-    print(f"Results keys: {results.keys() if results else 'None'}")
+    # Extract data needed for calculations
+    state_metrics = results.get('state_metrics', {})
+    config = results.get('config', {})
+    state_total_costs = results.get('state_total_costs', {})
+    state_total_payments = results.get('state_total_payments', {})
+    state_entry_counts = results.get('state_entry_counts', {})
     
-    # Check if there are state results directly or within all_results
-    if 'state_results' in results:
-        all_results = results.get('state_results', [])
-        print(f"Found state_results directly. Length: {len(all_results)}")
-    else:
-        # Try to get state results from the first simulation result if results is a list
-        print("No direct state_results found. Checking for first simulation result.")
-        if isinstance(results.get('all_results'), list) and len(results.get('all_results', [])) > 0:
-            first_sim = results['all_results'][0]
-            all_results = first_sim.get('state_results', [])
-            print(f"Found state_results in first simulation. Length: {len(all_results)}")
-        else:
-            print("No state_results found in any location.")
-            all_results = []
-
-    if not all_results:
+    if not state_metrics or not state_total_costs or not state_total_payments:
         return html.Div([
             html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
             html.Div([
-                html.P("No state results available. Try running a simulation first.", 
+                html.P("Insufficient data available. Try running a simulation first.", 
                        style={'textAlign': 'center', 'color': 'red', 'fontWeight': 'bold'})
             ])
         ])
-
-    # Print the structure of the first state result for debugging
-    if all_results and len(all_results) > 0:
-        print(f"First state result keys: {all_results[0].keys() if isinstance(all_results[0], dict) else 'Not a dict'}")
-        print(f"First state result: {all_results[0]}")
-
+    
+    # Process state data in order
+    sorted_states = sorted([(int(idx), data) for idx, data in state_metrics.items()], key=lambda x: x[0])
+    
     # Create a list to store monthly cash flows
     monthly_cash_flows = []
     cumulative_cash_flows = []
     month_labels = []
     current_month = 0
-
-    # Process each state
-    for state_idx, state_result in enumerate(all_results):
-        if not isinstance(state_result, dict):
-            print(f"Skipping non-dict state result at index {state_idx}: {state_result}")
+    
+    for state_idx, state_data in sorted_states:
+        if not isinstance(state_data, dict):
             continue
             
-        state_name = state_result.get('state_name', f'State {state_idx}')
-        state_duration = state_result.get('state_duration', 0)
-        state_payment = state_result.get('state_payment', 0)
-
-        print(f"Processing state {state_idx}: {state_name}, duration: {state_duration}, payment: {state_payment}")
-
+        state_idx_str = str(state_idx)
+        state_name = state_data.get('name', f'State {state_idx}')
+        
+        # Get duration based on state type
+        state_duration = 0
+        if "Training" in state_name and not "Transportation" in state_name:
+            state_duration = config.get('basic_training_duration', 6)
+        elif "Transportation and placement" in state_name:
+            state_duration = config.get('advanced_training_duration', 5)
+            # Skip if advanced training is disabled
+            if not config.get('include_advanced_training', True):
+                continue
+        elif "First Cruise" in state_name:
+            state_duration = config.get('first_cruise_duration', 6)
+        elif "Cruise" in state_name:
+            state_duration = config.get('subsequent_cruise_duration', 6)
+        elif "Break" in state_name:
+            state_duration = config.get('break_duration', 2)
+        
         # Skip states with no duration
         if state_duration <= 0:
-            print(f"Skipping state with no duration: {state_name}")
             continue
-
-        # For training states, add full cost as upfront payment in first month
+        
+        # Get total costs and payments for this state
+        total_cost = state_total_costs.get(state_idx_str, 0)
+        total_payment = state_total_payments.get(state_idx_str, 0)
+        
+        # Process differently based on state type
         if "Training" in state_name or "Transportation and placement" in state_name:
-            training_cost = state_result.get('total_training_costs', 0) - (
-                all_results[state_idx-1].get('total_training_costs', 0) if state_idx > 0 else 0
-            )
-
-            print(f"Training state {state_name}, cost: {training_cost}")
-
-            if training_cost > 0:
-                # Add training cost as negative cash flow at start of state
-                monthly_cash_flows.append(-training_cost)
+            # Add full cost up front for training states
+            if total_cost > 0:
+                monthly_cash_flows.append(-total_cost)
                 month_labels.append(f"Month {current_month + 1} ({state_name})")
                 current_month += 1
-
-                # Add 0 cash flow for remaining months of training
+                
+                # Add remaining months with 0 cash flow
                 for i in range(state_duration - 1):
                     monthly_cash_flows.append(0)
                     month_labels.append(f"Month {current_month + 1} ({state_name})")
                     current_month += 1
+            else:
+                # Just advance months if no cost
+                for i in range(state_duration):
+                    monthly_cash_flows.append(0)
+                    month_labels.append(f"Month {current_month + 1} ({state_name})")
+                    current_month += 1
         else:
-            # For cruise states, distribute payments evenly across months
-            monthly_payment = state_payment / state_duration if state_duration > 0 else 0
-            print(f"Cruise state {state_name}, monthly payment: {monthly_payment}, total: {monthly_payment * state_duration}")
+            # For cruise and break states, distribute payments evenly
+            monthly_payment = total_payment / state_duration if state_duration > 0 else 0
             
             for i in range(state_duration):
                 monthly_cash_flows.append(monthly_payment)
                 month_labels.append(f"Month {current_month + 1} ({state_name})")
                 current_month += 1
-
+    
     # Calculate cumulative cash flows
     running_total = 0
     for cf in monthly_cash_flows:
         running_total += cf
         cumulative_cash_flows.append(running_total)
-
-    print(f"Generated {len(monthly_cash_flows)} monthly cash flows")
-
+    
     # If no cash flows were generated, show an error
     if not monthly_cash_flows:
         return html.Div([
@@ -1501,7 +1498,7 @@ def update_monthly_cashflow_content(results):
                        style={'textAlign': 'center', 'color': 'red', 'fontWeight': 'bold'})
             ])
         ])
-
+    
     # Calculate IRR
     irr = None
     try:
@@ -1512,7 +1509,7 @@ def update_monthly_cashflow_content(results):
                 irr = ((1 + monthly_irr) ** 12 - 1) * 100  # Convert to annual percentage
     except Exception as e:
         print(f"IRR calculation error: {str(e)}")
-
+    
     # Create cash flow visualization
     cash_flow_fig = go.Figure()
     cash_flow_fig.add_trace(go.Bar(
@@ -1529,7 +1526,7 @@ def update_monthly_cashflow_content(results):
         yaxis='y2'
     ))
     cash_flow_fig.update_layout(
-        title='Monthly and Cumulative Cash Flows',
+        title='Monthly and Cumulative Cash Flows (With Attrition)',
         xaxis_title='Month',
         yaxis_title='Monthly Cash Flow ($)',
         yaxis2=dict(
@@ -1546,7 +1543,7 @@ def update_monthly_cashflow_content(results):
             showticklabels=True
         )
     )
-
+    
     # Create the monthly cash flow table
     monthly_cashflow_table = dash_table.DataTable(
         id='monthly-cashflow-table',
@@ -1582,9 +1579,9 @@ def update_monthly_cashflow_content(results):
         page_size=10,
         style_table={'overflowX': 'auto'}
     )
-
+    
     return html.Div([
-        html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
+        html.H4("Monthly Cash Flow Analysis (With Attrition)", style={'textAlign': 'center', 'marginBottom': '20px'}),
         
         # IRR Summary
         html.Div([
@@ -1605,7 +1602,7 @@ def update_monthly_cashflow_content(results):
         # Monthly Cash Flow Table
         html.Div([
             html.H5("Monthly Cash Flow Details", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            html.P("This table shows the detailed monthly cash flows and cumulative totals:",
+            html.P("This table shows the aggregated monthly cash flows accounting for student attrition:",
                   style={'marginBottom': '15px'}),
             monthly_cashflow_table
         ])
