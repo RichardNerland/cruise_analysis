@@ -1183,7 +1183,27 @@ def update_overview_content(results):
                     "Total Payments": total_payment,
                     "Net Cash Flow": net_cash_flow,
                     "Simulations Entered": entry_count,
-                    "Entry Rate (%)": (entry_count / num_simulations * 100) if num_simulations > 0 else 0
+                    "Entry Rate (%)": (entry_count / num_simulations * 100) if num_simulations > 0 else 0,
+                    # Add new calculated fields
+                    "Avg Payment Per Student": total_payment / entry_count if entry_count > 0 else 0,
+                    # Get payment fraction based on state name
+                    "Payment Fraction (%)": (
+                        config.get('first_cruise_payment_fraction', 0.14) * 100 if "First Cruise" in state_name
+                        else config.get('subsequent_cruise_payment_fraction', 0.14) * 100 if "Cruise" in state_name
+                        else 0
+                    ),
+                    # Calculate implied average salary
+                    "Implied Avg Salary": (
+                        (total_payment / entry_count) / (
+                            config.get('first_cruise_payment_fraction', 0.14) if "First Cruise" in state_name
+                            else config.get('subsequent_cruise_payment_fraction', 0.14) if "Cruise" in state_name
+                            else 1  # Avoid division by zero for non-cruise states
+                        ) if entry_count > 0 and (
+                            config.get('first_cruise_payment_fraction', 0.14) if "First Cruise" in state_name
+                            else config.get('subsequent_cruise_payment_fraction', 0.14) if "Cruise" in state_name
+                            else 1
+                        ) > 0 else 0
+                    )
                 })
 
     # Calculate overall financials
@@ -1245,7 +1265,10 @@ def update_overview_content(results):
             {"name": "Entry Rate (%)", "id": "Entry Rate (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
             {"name": "Total Costs", "id": "Total Costs", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
             {"name": "Total Payments", "id": "Total Payments", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-            {"name": "Net Cash Flow", "id": "Net Cash Flow", 'type': 'numeric', 'format': {'specifier': '$,.2f'}}
+            {"name": "Net Cash Flow", "id": "Net Cash Flow", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
+            {"name": "Avg Payment Per Student", "id": "Avg Payment Per Student", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
+            {"name": "Payment Fraction (%)", "id": "Payment Fraction (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
+            {"name": "Implied Avg Salary", "id": "Implied Avg Salary", 'type': 'numeric', 'format': {'specifier': '$,.2f'}}
         ],
         style_cell={'textAlign': 'center', 'padding': '10px'},
         style_header={
@@ -1265,7 +1288,15 @@ def update_overview_content(results):
                 'if': {'filter_query': '{Net Cash Flow} > 0'},
                 'color': 'green'
             }
-        ]
+        ],
+        tooltip_data=[
+            {
+                'Implied Avg Salary': {'value': 'Calculated as: Avg Payment Per Student / Payment Fraction'},
+                'Avg Payment Per Student': {'value': 'Total Payments / Simulations Entered'},
+                'Payment Fraction (%)': {'value': 'Percentage of salary paid as payment'}
+            } for row in state_data
+        ],
+        tooltip_duration=None
     )
 
     # Combine all elements
@@ -1297,7 +1328,10 @@ def update_overview_content(results):
                     html.Li("Entry Rate: Percentage of total simulations that entered the state"),
                     html.Li("Total Costs: Sum of all costs incurred in this state"),
                     html.Li("Total Payments: Sum of all payments received in this state"),
-                    html.Li("Net Cash Flow: Difference between payments and costs")
+                    html.Li("Net Cash Flow: Difference between payments and costs"),
+                    html.Li("Avg Payment Per Student: Total payments divided by number of students who entered the state"),
+                    html.Li("Payment Fraction: Percentage of salary that is paid as payment"),
+                    html.Li("Implied Avg Salary: Estimated average salary based on payments and payment fraction")
                 ], style={'marginBottom': '15px'}),
                 state_metrics_table
             ])
