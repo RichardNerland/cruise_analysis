@@ -28,6 +28,36 @@ from simulation_config import (
     DEFAULT_CONFIG
 )
 
+# Modify the default simulation configs to match our new values
+DEFAULT_CONFIG.basic_training_cost = 2500
+DEFAULT_CONFIG.advanced_training_dropout_rate = 0.0
+DEFAULT_CONFIG.disney_cruise_salary_variation = 1.0
+DEFAULT_CONFIG.costa_cruise_salary_variation = 1.0
+DEFAULT_CONFIG.disney_cruise_dropout_rate = 0.0  # Set Disney cruise dropout rate to 0
+DEFAULT_CONFIG.costa_cruise_dropout_rate = 0.0   # Set Costa cruise dropout rate to 0
+
+# Apply these changes to our preset scenarios as well
+BASELINE_CONFIG.basic_training_cost = 2500
+BASELINE_CONFIG.advanced_training_dropout_rate = 0.0
+BASELINE_CONFIG.disney_cruise_salary_variation = 1.0
+BASELINE_CONFIG.costa_cruise_salary_variation = 1.0
+BASELINE_CONFIG.disney_cruise_dropout_rate = 0.0  # Set Disney cruise dropout rate to 0
+BASELINE_CONFIG.costa_cruise_dropout_rate = 0.0   # Set Costa cruise dropout rate to 0
+
+OPTIMISTIC_CONFIG.basic_training_cost = 2500
+OPTIMISTIC_CONFIG.advanced_training_dropout_rate = 0.0
+OPTIMISTIC_CONFIG.disney_cruise_salary_variation = 1.0
+OPTIMISTIC_CONFIG.costa_cruise_salary_variation = 1.0
+OPTIMISTIC_CONFIG.disney_cruise_dropout_rate = 0.0  # Set Disney cruise dropout rate to 0
+OPTIMISTIC_CONFIG.costa_cruise_dropout_rate = 0.0   # Set Costa cruise dropout rate to 0
+
+PESSIMISTIC_CONFIG.basic_training_cost = 2500
+PESSIMISTIC_CONFIG.advanced_training_dropout_rate = 0.0
+PESSIMISTIC_CONFIG.disney_cruise_salary_variation = 1.0
+PESSIMISTIC_CONFIG.costa_cruise_salary_variation = 1.0
+PESSIMISTIC_CONFIG.disney_cruise_dropout_rate = 0.0  # Set Disney cruise dropout rate to 0
+PESSIMISTIC_CONFIG.costa_cruise_dropout_rate = 0.0   # Set Costa cruise dropout rate to 0
+
 # Initialize the Dash app with production config
 app = dash.Dash(
     __name__,
@@ -184,7 +214,7 @@ app.layout = html.Div([
                                 dcc.Input(
                                     id="basic-training-cost",
                                     type="number",
-                                    value=1500,
+                                    value=2500,
                                     min=0,
                                     step=100,
                                     style={"width": "100%"}
@@ -280,7 +310,7 @@ app.layout = html.Div([
                                         min=0,
                                         max=50,
                                         step=1,
-                                        value=15,
+                                        value=0,
                                         marks={i: f'{i}%' for i in range(0, 51, 10)},
                                     )
                                 ], style={'marginBottom': '15px'}),
@@ -457,7 +487,7 @@ app.layout = html.Div([
                                     min=0,
                                     max=20,
                                     step=0.5,
-                                    value=5,
+                                    value=1,
                                     marks={i: f'{i}%' for i in range(0, 21, 5)},
                                 )
                             ], style={'marginBottom': '15px'}),
@@ -547,7 +577,7 @@ app.layout = html.Div([
                                     min=0,
                                     max=20,
                                     step=0.5,
-                                    value=5,
+                                    value=1,
                                     marks={i: f'{i}%' for i in range(0, 21, 5)},
                                 )
                             ], style={'marginBottom': '15px'}),
@@ -685,9 +715,6 @@ app.layout = html.Div([
                             dcc.Tabs([
                                 dcc.Tab(label='Overview', children=[
                                     html.Div(id="overview-content")
-                                ]),
-                                dcc.Tab(label='Monthly Cash Flow', children=[
-                                    html.Div(id="monthly-cashflow-content")
                                 ]),
                                 dcc.Tab(label='Scenario Comparison', children=[
                                     html.Div([
@@ -883,7 +910,7 @@ def update_from_preset(preset_name):
     # Return all values from the config
     return (
         config.include_advanced_training,
-        config.basic_training_cost,
+        2500,  # Changed basic_training_cost to 2500
         config.basic_training_dropout_rate * 100,
         config.basic_training_duration,
         
@@ -894,7 +921,7 @@ def update_from_preset(preset_name):
         
         # Transportation and placement parameters
         config.advanced_training_cost,
-        config.advanced_training_dropout_rate * 100,
+        0,  # Changed advanced_training_dropout_rate to 0%
         config.advanced_training_duration,
         
         # Early termination parameters
@@ -913,7 +940,7 @@ def update_from_preset(preset_name):
         config.disney_third_cruise_salary,
         config.disney_cruise_duration,
         config.disney_cruise_dropout_rate * 100,
-        config.disney_cruise_salary_variation,
+        1,  # Changed disney_cruise_salary_variation to 1%
         config.disney_cruise_payment_fraction * 100,
         
         # Costa cruise settings
@@ -922,7 +949,7 @@ def update_from_preset(preset_name):
         config.costa_third_cruise_salary,
         config.costa_cruise_duration,
         config.costa_cruise_dropout_rate * 100,
-        config.costa_cruise_salary_variation,
+        1,  # Changed costa_cruise_salary_variation to 1%
         config.costa_cruise_payment_fraction * 100,
         
         # Break settings
@@ -1155,8 +1182,12 @@ def calculate_progression_data(state_metrics, config):
             dropout_rate = 0.0 # Default as decimal
             if state_name == "Training":
                 dropout_rate = config.get('basic_training_dropout_rate', 0)
+            elif state_name == "Offer Stage":
+                dropout_rate = config.get('no_offer_rate', 0)
             elif state_name == "Transportation and placement":
                 dropout_rate = config.get('advanced_training_dropout_rate', 0)
+            elif state_name == "Early Termination Stage":
+                dropout_rate = config.get('early_termination_rate', 0)
             elif state_name == "First Cruise":
                 dropout_rate = config.get('disney_cruise_dropout_rate', 0)
             elif "Break" in state_name:
@@ -1174,8 +1205,12 @@ def calculate_progression_data(state_metrics, config):
             # Get state duration for converting to monthly values
             if state_name == "Training":
                 state_duration = config.get('basic_training_duration', 0)
+            elif state_name == "Offer Stage":
+                state_duration = config.get('offer_stage_duration', 0)
             elif state_name == "Transportation and placement":
                 state_duration = config.get('advanced_training_duration', 0)
+            elif state_name == "Early Termination Stage":
+                state_duration = config.get('early_termination_duration', 0)
             elif state_name == "First Cruise":
                 state_duration = config.get('disney_cruise_duration', 0)
             elif "Break" in state_name:
@@ -1190,11 +1225,15 @@ def calculate_progression_data(state_metrics, config):
             # Calculate cash flow per student for this state
             if state_name == "Training":
                 cash_flow = -config.get('basic_training_cost', 0)
+            elif state_name == "Offer Stage":
+                cash_flow = 0  # No cost for offer stage
             elif state_name == "Transportation and placement":
                 if config.get('include_advanced_training', False):
                     cash_flow = -config.get('advanced_training_cost', 0)
                 else:
                     cash_flow = 0
+            elif state_name == "Early Termination Stage":
+                cash_flow = 0  # No cost for early termination stage
             else:  # Cruises and breaks
                 cash_flow = state_payment  # Use total state payment
 
@@ -1464,7 +1503,6 @@ def update_summary_stats(results):
     # Extract key metrics
     completion_rate = results.get('completion_rate', 0)
     dropout_rate = results.get('dropout_rate', 0)
-    avg_duration = results.get('avg_duration', 0) / 12  # Convert months to years
     avg_training_cost = results.get('avg_training_cost', 0)
     avg_total_payments = results.get('avg_total_payments', 0)
     avg_net_cash_flow = results.get('avg_net_cash_flow', 0)
@@ -1483,10 +1521,6 @@ def update_summary_stats(results):
                     html.Div([
                         html.P("Dropout Rate:", style={'fontWeight': 'bold'}),
                         html.P(f"{dropout_rate:.1f}%")
-                    ], style={'marginBottom': '10px'}),
-                    html.Div([
-                        html.P("Average Duration:", style={'fontWeight': 'bold'}),
-                        html.P(f"{avg_duration:.1f} years")
                     ])
                 ])
             ], style={'width': '50%', 'display': 'inline-block', 'verticalAlign': 'top'}),
@@ -1530,196 +1564,6 @@ def update_overview_content(results):
     provider_distribution = results.get('provider_distribution', {})
     num_simulations = config.get('num_students', 0)
 
-    # Create a more informative career path diagram
-    career_explanation = html.Div([
-        html.H5("Career Path Structure", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        html.P([
-            "This simulation models two parallel career tracks after training and placement: ",
-            html.Span("Disney", style={'color': '#2196F3', 'fontWeight': 'bold'}),
-            " (30% of students) and ",
-            html.Span("Costa", style={'color': '#4CAF50', 'fontWeight': 'bold'}),
-            " (70% of students). Students are assigned to one provider after training and follow only that provider's path."
-        ], style={'marginBottom': '10px'})
-    ], style={'marginBottom': '30px', 'backgroundColor': '#f9f9f9', 'padding': '15px', 'borderRadius': '5px'})
-
-    # Group states by provider
-    disney_states = []
-    costa_states = []
-    training_states = []
-    
-    # Reorganize state metrics for better flow visualization
-    for state_idx_str, metrics in sorted(state_metrics.items(), key=lambda x: int(x[0])):
-        if isinstance(metrics, dict):
-            state_name = metrics.get('name', f"State {state_idx_str}")
-            provider = metrics.get('provider', "")
-            
-            if "Disney" in provider:
-                disney_states.append((int(state_idx_str), metrics, state_name))
-            elif "Costa" in provider:
-                costa_states.append((int(state_idx_str), metrics, state_name))
-            elif "Training" in state_name or "Transportation" in state_name:
-                training_states.append((int(state_idx_str), metrics, state_name))
-
-    # Calculate progression data using the helper function
-    progression_data = calculate_progression_data(state_metrics, config)
-
-    # Create provider assignment Sankey diagram - this is a simplified diagram showing the flow
-    # from training to provider selection
-    
-    # Get training and transportation/placement information
-    train_transported_count = 0
-    for row in progression_data:
-        if "Transportation and placement" in row['state']:
-            train_transported_count = row['completed']
-            break
-    
-    # If we didn't find it, use the training completed count
-    if train_transported_count == 0:
-        for row in progression_data:
-            if "Training" in row['state']:
-                train_transported_count = row['completed']
-                break
-    
-    # Calculate provider assignments based on percentage allocation
-    disney_allocation = config.get('disney_allocation_pct', 30) / 100
-    costa_allocation = config.get('costa_allocation_pct', 70) / 100
-    
-    disney_assigned = int(train_transported_count * disney_allocation)
-    costa_assigned = train_transported_count - disney_assigned
-    
-    # Create Sankey diagram for provider assignment
-    labels = ["Training & Placement", "Disney Cruise Career", "Costa Cruise Career"]
-    
-    sankey_fig = go.Figure(data=[go.Sankey(
-        node=dict(
-            pad=15,
-            thickness=20,
-            line=dict(color="black", width=0.5),
-            label=labels,
-            color=["#9E9E9E", "#2196F3", "#4CAF50"]  # Grey, Blue, Green
-        ),
-        link=dict(
-            source=[0, 0],  # From Training & Placement
-            target=[1, 2],  # To Disney and Costa
-            value=[disney_assigned, costa_assigned],
-            color=["rgba(33, 150, 243, 0.6)", "rgba(76, 175, 80, 0.6)"]  # Blue, Green
-        )
-    )])
-
-    sankey_fig.update_layout(
-        title_text="Career Path Assignment Flow",
-        font_size=12,
-        height=300
-    )
-    
-    # Create career path illustration to show cruise sequences
-    cruise_sequence_fig = go.Figure()
-    
-    # Training steps (common to both paths)
-    training_steps = []
-    for idx, metrics, name in sorted(training_states, key=lambda x: x[0]):
-        training_steps.append(name)
-    
-    # Disney cruises
-    disney_steps = []
-    for idx, metrics, name in sorted(disney_states, key=lambda x: x[0]):
-        if "Break" not in name:  # Skip breaks for the diagram
-            disney_steps.append(name)
-    
-    # Costa cruises
-    costa_steps = []
-    for idx, metrics, name in sorted(costa_states, key=lambda x: x[0]):
-        if "Break" not in name:  # Skip breaks for the diagram
-            costa_steps.append(name)
-    
-    # Data for the diagram
-    steps_data = []
-    
-    # Training steps
-    for i, step in enumerate(training_steps):
-        steps_data.append({
-            'Step': i+1,
-            'Path': 'Common',
-            'Stage': step,
-            'Duration': (
-                config.get('basic_training_duration', 6) if "Training" in step and not "Transportation" in step
-                else config.get('advanced_training_duration', 5) if "Transportation" in step
-                else 0
-            ),
-            'Start': 0  # Add a start column
-        })
-    
-    # Disney steps
-    for i, step in enumerate(disney_steps):
-        steps_data.append({
-            'Step': i+len(training_steps)+1,
-            'Path': 'Disney',
-            'Stage': step,
-            'Duration': config.get('disney_cruise_duration', 6),
-            'Start': 0  # Add a start column
-        })
-    
-    # Costa steps
-    for i, step in enumerate(costa_steps):
-        steps_data.append({
-            'Step': i+len(training_steps)+1,
-            'Path': 'Costa',
-            'Stage': step,
-            'Duration': config.get('costa_cruise_duration', 7),
-            'Start': 0  # Add a start column
-        })
-    
-    # Create a better visual representation of the career paths
-    career_paths_fig = px.timeline(
-        steps_data,
-        x_start='Start',
-        x_end='Duration',
-        y='Path',
-        color='Path',
-        text='Stage',
-        color_discrete_map={
-            'Common': '#9E9E9E',
-            'Disney': '#2196F3',
-            'Costa': '#4CAF50'
-        },
-        title='Career Path Comparison: Disney vs Costa'
-    )
-    
-    career_paths_fig.update_yaxes(
-        categoryorder='array',
-        categoryarray=['Disney', 'Common', 'Costa']
-    )
-    
-    career_paths_fig.update_layout(
-        xaxis_title='Duration (months)',
-        yaxis_title='Provider Track',
-        height=300
-    )
-
-    # Create summary stats boxes
-    summary_stats_boxes = html.Div([
-        html.H5("Overall Simulation Outcomes", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        html.Div([
-            html.Div([
-                html.H5("Completion Rate", style={'textAlign': 'center', 'marginBottom': '10px'}),
-                html.Div(f"{results.get('completion_rate', 0):.1f}%", style={
-                    'fontSize': '24px',
-                    'textAlign': 'center',
-                    'color': '#4CAF50'
-                })
-            ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px', 'marginRight': '10%'}),
-
-            html.Div([
-                html.H5("Dropout Rate", style={'textAlign': 'center', 'marginBottom': '10px'}),
-                html.Div(f"{results.get('dropout_rate', 0):.1f}%", style={
-                    'fontSize': '24px',
-                    'textAlign': 'center',
-                    'color': '#F44336'
-                })
-            ], style={'width': '45%', 'display': 'inline-block', 'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px'})
-        ], style={'marginBottom': '20px'})
-    ])
-    
     # Create provider distribution boxes
     provider_boxes = None
     if provider_distribution:
@@ -1743,64 +1587,13 @@ def update_overview_content(results):
             ], style={'marginBottom': '20px'})
         ], style={'marginBottom': '30px'})
 
-    # Create Sankey diagram for student flow
-    labels = [row['state'] for row in progression_data] + [f"Dropout ({row['state']})" for row in progression_data if row['dropouts'] > 0]
-    label_indices = {label: i for i, label in enumerate(labels)}
-
-    source = []
-    target = []
-    value = []
-    link_colors = []
-
-    for i, row in enumerate(progression_data):
-        current_state_label = row['state']
-        current_state_idx = label_indices[current_state_label]
-
-        if i < len(progression_data) - 1:
-            next_state_label = progression_data[i+1]['state']
-            next_state_idx = label_indices[next_state_label]
-            if row['completed'] > 0:
-                source.append(current_state_idx)
-                target.append(next_state_idx)
-                value.append(row['completed'])
-                link_colors.append("rgba(55, 183, 109, 0.6)")
-
-        if row['dropouts'] > 0:
-            dropout_label = f"Dropout ({row['state']})"
-            dropout_state_idx = label_indices[dropout_label]
-            source.append(current_state_idx)
-            target.append(dropout_state_idx)
-            value.append(row['dropouts'])
-            link_colors.append("rgba(219, 64, 82, 0.6)")
-
-    sankey_fig = go.Figure(data=[go.Sankey(
-        node=dict(
-            pad=15,
-            thickness=20,
-            line=dict(color="black", width=0.5),
-            label=labels,
-            color="blue"
-        ),
-        link=dict(
-            source=source,
-            target=target,
-            value=value,
-            color=link_colors
-        ))])
-
-    sankey_fig.update_layout(title_text="Student Progression Flow", font_size=10)
-
-    # Process state financial data
+    # Process state data for visualizations and metrics
     state_data = []
     for state_idx_str, metrics in sorted(state_metrics.items(), key=lambda x: int(x[0])):
         if isinstance(metrics, dict):
             state_name = metrics.get('name', f"State {state_idx_str}")
             provider = metrics.get('provider', "")
             
-            # Skip advanced training state if disabled
-            if "Advanced Training" in state_name and not config.get('include_advanced_training', True):
-                continue
-
             total_cost = state_total_costs.get(state_idx_str, 0.0)
             total_payment = state_total_payments.get(state_idx_str, 0.0)
             entry_count = state_entry_counts.get(state_idx_str, 0)
@@ -1815,20 +1608,17 @@ def update_overview_content(results):
                     "Net Cash Flow": net_cash_flow,
                     "Simulations Entered": entry_count,
                     "Entry Rate (%)": (entry_count / num_simulations * 100) if num_simulations > 0 else 0,
-                    # Add new calculated fields
                     "Avg Payment Per Student": total_payment / entry_count if entry_count > 0 else 0,
-                    # Get payment fraction based on provider and state name
                     "Payment Fraction (%)": (
                         config.get('disney_cruise_payment_fraction', 0.14) * 100 if "Disney" in provider and "Cruise" in state_name
                         else config.get('costa_cruise_payment_fraction', 0.14) * 100 if "Costa" in provider and "Cruise" in state_name
                         else 0
                     ),
-                    # Calculate implied average salary
                     "Implied Avg Salary": (
                         (total_payment / entry_count) / (
                             config.get('disney_cruise_payment_fraction', 0.14) if "Disney" in provider and "Cruise" in state_name
                             else config.get('costa_cruise_payment_fraction', 0.14) if "Costa" in provider and "Cruise" in state_name
-                            else 1  # Avoid division by zero for non-cruise states
+                            else 1
                         ) if entry_count > 0 and (
                             config.get('disney_cruise_payment_fraction', 0.14) if "Disney" in provider and "Cruise" in state_name
                             else config.get('costa_cruise_payment_fraction', 0.14) if "Costa" in provider and "Cruise" in state_name
@@ -1863,7 +1653,7 @@ def update_overview_content(results):
             ], style={'display': 'inline-block', 'width': '33%', 'textAlign': 'center'})
         ], style={'border': '1px solid #ddd', 'padding': '15px', 'borderRadius': '5px', 'backgroundColor': '#f9f9f9'})
     ])
-    
+
     # Create provider-specific metrics if available
     provider_metrics_boxes = None
     if provider_metrics:
@@ -1914,58 +1704,58 @@ def update_overview_content(results):
             ], style={'marginBottom': '20px'})
         ], style={'marginBottom': '30px'})
 
-    # Create cash flow visualization
-    cash_flow_fig = go.Figure()
-    if state_data:
-        # Add provider column for coloring
-        colors = {
-            "Disney": "#2196F3",  # Blue for Disney
-            "Costa": "#4CAF50",   # Green for Costa
-            "": "#9E9E9E"         # Grey for non-provider states (like training)
-        }
-        
-        # Create figure with provider-based coloring
-        cash_flow_fig = px.bar(
-            state_data,
-            x="State",
-            y="Net Cash Flow",
-            color="Provider",
-            color_discrete_map=colors,
-            title="Net Cash Flow by State",
-            text="Net Cash Flow"
-        )
-        
-        cash_flow_fig.update_traces(
-            texttemplate="%{text:$,.2f}",
-            textposition="auto"
-        )
-        
-        cash_flow_fig.update_layout(
-            xaxis_title="State",
-            yaxis_title="Net Cash Flow ($)",
-            template="plotly_white"
-        )
-
     # Create detailed state metrics table
     state_metrics_table = dash_table.DataTable(
         id='state-metrics-table',
         data=state_data,
         columns=[
             {"name": "State", "id": "State"},
-            {"name": "Provider", "id": "Provider"},
-            {"name": "Simulations Entered", "id": "Simulations Entered", 'type': 'numeric'},
-            {"name": "Entry Rate (%)", "id": "Entry Rate (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
+            {"name": "Entries", "id": "Simulations Entered", 'type': 'numeric'},
+            {"name": "Entry %", "id": "Entry Rate (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
             {"name": "Total Costs", "id": "Total Costs", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
             {"name": "Total Payments", "id": "Total Payments", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
             {"name": "Net Cash Flow", "id": "Net Cash Flow", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-            {"name": "Avg Payment Per Student", "id": "Avg Payment Per Student", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
-            {"name": "Payment Fraction (%)", "id": "Payment Fraction (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
-            {"name": "Implied Avg Salary", "id": "Implied Avg Salary", 'type': 'numeric', 'format': {'specifier': '$,.2f'}}
+            {"name": "Avg Payment/Student", "id": "Avg Payment Per Student", 'type': 'numeric', 'format': {'specifier': '$,.2f'}},
+            {"name": "Payment %", "id": "Payment Fraction (%)", 'type': 'numeric', 'format': {'specifier': '.1f'}},
+            {"name": "Implied Salary", "id": "Implied Avg Salary", 'type': 'numeric', 'format': {'specifier': '$,.2f'}}
         ],
-        style_cell={'textAlign': 'center', 'padding': '10px'},
+        style_table={
+            'overflowX': 'auto',
+            'minWidth': '100%'
+        },
+        style_cell={
+            'textAlign': 'center',
+            'padding': '5px',
+            'font-family': 'Arial, sans-serif',
+            'font-size': '12px',
+            'whiteSpace': 'normal',
+            'height': 'auto',
+            'minWidth': '60px',
+            'maxWidth': '180px'
+        },
+        style_cell_conditional=[
+            {'if': {'column_id': 'State'}, 'textAlign': 'left', 'minWidth': '80px', 'maxWidth': '120px'},
+            {'if': {'column_id': 'Simulations Entered'}, 'minWidth': '60px', 'maxWidth': '80px'},
+            {'if': {'column_id': 'Entry Rate (%)'}, 'minWidth': '60px', 'maxWidth': '80px'},
+            {'if': {'column_id': 'Total Costs'}, 'minWidth': '90px', 'maxWidth': '120px'},
+            {'if': {'column_id': 'Total Payments'}, 'minWidth': '90px', 'maxWidth': '120px'},
+            {'if': {'column_id': 'Net Cash Flow'}, 'minWidth': '90px', 'maxWidth': '120px'},
+            {'if': {'column_id': 'Avg Payment Per Student'}, 'minWidth': '90px', 'maxWidth': '120px'},
+            {'if': {'column_id': 'Payment Fraction (%)'}, 'minWidth': '60px', 'maxWidth': '80px'},
+            {'if': {'column_id': 'Implied Avg Salary'}, 'minWidth': '90px', 'maxWidth': '120px'}
+        ],
         style_header={
             'backgroundColor': 'rgb(230, 230, 230)',
-            'fontWeight': 'bold'
+            'fontWeight': 'bold',
+            'textAlign': 'center',
+            'padding': '5px',
+            'whiteSpace': 'normal',
+            'height': 'auto'
+        },
+        style_data={
+            'whiteSpace': 'normal',
+            'height': 'auto',
+            'lineHeight': '15px'
         },
         style_data_conditional=[
             {
@@ -1979,14 +1769,6 @@ def update_overview_content(results):
             {
                 'if': {'filter_query': '{Net Cash Flow} > 0'},
                 'color': 'green'
-            },
-            {
-                'if': {'filter_query': '{Provider} = "Disney"'},
-                'backgroundColor': 'rgba(33, 150, 243, 0.1)'
-            },
-            {
-                'if': {'filter_query': '{Provider} = "Costa"'},
-                'backgroundColor': 'rgba(76, 175, 80, 0.1)'
             }
         ],
         tooltip_data=[
@@ -1996,32 +1778,17 @@ def update_overview_content(results):
                 'Payment Fraction (%)': {'value': 'Percentage of salary paid as payment'}
             } for row in state_data
         ],
-        tooltip_duration=None
+        tooltip_duration=None,
+        page_size=20,
+        style_as_list_view=True
     )
 
     # Combine all elements
     return html.Div([
         html.H4("Simulation Overview", style={'textAlign': 'center', 'marginBottom': '20px'}),
         
-        # Top section - Summary stats
-        summary_stats_boxes,
-        
-        # Career path explanation 
-        career_explanation,
-        
         # Provider distribution section (if available)
         provider_boxes if provider_boxes else None,
-        
-        # Career path visualization
-        html.Div([
-            html.H5("Provider Assignment Flow", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            dcc.Graph(figure=sankey_fig, style={'marginBottom': '20px'})
-        ]),
-        
-        html.Div([
-            html.H5("Career Path Structure", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            dcc.Graph(figure=career_paths_fig, style={'marginBottom': '30px'})
-        ]),
         
         # Provider-specific metrics (if available)
         provider_metrics_boxes if provider_metrics_boxes else None,
@@ -2029,10 +1796,6 @@ def update_overview_content(results):
         # Financial section
         html.Div([
             financial_summary,
-            html.Div([
-                html.H5("Cash Flow by State", style={'textAlign': 'center', 'marginBottom': '15px'}),
-                dcc.Graph(figure=cash_flow_fig, style={'marginBottom': '30px'})
-            ]),
             html.Div([
                 html.H5("Detailed State Metrics", style={'textAlign': 'center', 'marginBottom': '15px'}),
                 html.P("This table shows detailed metrics for each state in the simulation:",
@@ -2045,449 +1808,10 @@ def update_overview_content(results):
                     html.Li("Net Cash Flow: Difference between payments and costs"),
                     html.Li("Avg Payment Per Student: Total payments divided by number of students who entered the state"),
                     html.Li("Payment Fraction: Percentage of salary that is paid as payment"),
-                    html.Li("Implied Avg Salary: Estimated average salary based on payments and payment fraction")
+                    html.Li("Implied Salary: Calculated as Avg Payment Per Student / Payment Fraction")
                 ], style={'marginBottom': '15px'}),
                 state_metrics_table
             ])
-        ])
-    ])
-
-# Add the callback after other callbacks
-@app.callback(
-    Output("monthly-cashflow-content", "children"),
-    [Input("simulation-results-store", "data")]
-)
-def update_monthly_cashflow_content(results):
-    if not results:
-        return "Run a simulation to see results"
-
-    # Extract data needed for calculations
-    state_metrics = results.get('state_metrics', {})
-    config = results.get('config', {})
-    state_total_costs = results.get('state_total_costs', {})
-    state_total_payments = results.get('state_total_payments', {})
-    state_entry_counts = results.get('state_entry_counts', {})
-    provider_distribution = results.get('provider_distribution', {})
-    
-    if not state_metrics or not state_total_costs or not state_total_payments:
-        return html.Div([
-            html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
-            html.Div([
-                html.P("Insufficient data available. Try running a simulation first.", 
-                       style={'textAlign': 'center', 'color': 'red', 'fontWeight': 'bold'})
-            ])
-        ])
-    
-    # Create explanatory text
-    provider_explanation = html.Div([
-        html.H5("Provider Track Explanation", style={'textAlign': 'center', 'marginBottom': '15px'}),
-        html.P([
-            "This simulation models two parallel career tracks after training and placement: ",
-            html.Span("Disney", style={'color': '#2196F3', 'fontWeight': 'bold'}),
-            " (30% of students) and ",
-            html.Span("Costa", style={'color': '#4CAF50', 'fontWeight': 'bold'}),
-            " (70% of students). Students follow only one provider's path, not both."
-        ], style={'marginBottom': '10px'}),
-        html.P([
-            "In the visualization below, we show the two possible career paths separately:"
-        ], style={'marginBottom': '10px'}),
-        html.Div([
-            html.Div([
-                html.P(html.Span("Training & Placement", style={'fontWeight': 'bold'}), style={'marginBottom': '5px'}),
-                html.P("↓", style={'marginBottom': '0px', 'textAlign': 'center'}),
-                html.P([
-                    html.Span("Disney Track (30%)", style={'color': '#2196F3', 'fontWeight': 'bold'}),
-                    ": 3 cruises, 6 months each"
-                ], style={'marginBottom': '5px'}),
-            ], style={'width': '45%', 'display': 'inline-block', 'marginRight': '10%'}),
-            
-            html.Div([
-                html.P(html.Span("Training & Placement", style={'fontWeight': 'bold'}), style={'marginBottom': '5px'}),
-                html.P("↓", style={'marginBottom': '0px', 'textAlign': 'center'}),
-                html.P([
-                    html.Span("Costa Track (70%)", style={'color': '#4CAF50', 'fontWeight': 'bold'}),
-                    ": 3 cruises, 7 months each"
-                ], style={'marginBottom': '5px'})
-            ], style={'width': '45%', 'display': 'inline-block'})
-        ], style={'marginBottom': '20px', 'textAlign': 'center'})
-    ], style={'marginBottom': '30px', 'backgroundColor': '#f9f9f9', 'padding': '15px', 'borderRadius': '8px'})
-    
-    # Process state data in order
-    sorted_states = sorted([(int(idx), data) for idx, data in state_metrics.items()], key=lambda x: x[0])
-    
-    # Separate data by provider for better visualization
-    training_states = []
-    disney_states = []
-    costa_states = []
-    
-    for state_idx, state_data in sorted_states:
-        if not isinstance(state_data, dict):
-            continue
-            
-        state_idx_str = str(state_idx)
-        state_name = state_data.get('name', f'State {state_idx}')
-        provider = state_data.get('provider', "")
-        
-        # Categorize by provider
-        if not provider and ("Training" in state_name or "Transportation" in state_name):
-            training_states.append((state_idx, state_data))
-        elif "Disney" in provider:
-            disney_states.append((state_idx, state_data))
-        elif "Costa" in provider:
-            costa_states.append((state_idx, state_data))
-    
-    # Create separate cash flow arrays for each provider track
-    disney_months = []
-    disney_cash_flows = []
-    disney_cumulative = []
-    
-    costa_months = []
-    costa_cash_flows = []
-    costa_cumulative = []
-    
-    training_months = []
-    training_cash_flows = []
-    training_cumulative = []
-    
-    current_month = 0
-    running_total = 0
-    
-    # Process training states first
-    for state_idx, state_data in training_states:
-        state_idx_str = str(state_idx)
-        state_name = state_data.get('name', f'State {state_idx}')
-        
-        # Get duration
-        if "Training" in state_name and not "Transportation" in state_name:
-            state_duration = config.get('basic_training_duration', 6)
-        elif "Transportation and placement" in state_name:
-            state_duration = config.get('advanced_training_duration', 5)
-            # Skip if advanced training is disabled
-            if not config.get('include_advanced_training', True):
-                continue
-        
-        # Skip states with no duration
-        if state_duration <= 0:
-            continue
-        
-        # Get total costs and payments for this state
-        total_cost = state_total_costs.get(state_idx_str, 0)
-        
-        # Add full cost up front for training states
-        if total_cost > 0:
-            training_cash_flows.append(-total_cost)
-            training_months.append(f"Month {current_month + 1} ({state_name})")
-            running_total -= total_cost
-            training_cumulative.append(running_total)
-            current_month += 1
-            
-            # Add remaining months with 0 cash flow
-            for i in range(state_duration - 1):
-                training_cash_flows.append(0)
-                training_months.append(f"Month {current_month + 1} ({state_name})")
-                training_cumulative.append(running_total)
-                current_month += 1
-        else:
-            # Just advance months if no cost
-            for i in range(state_duration):
-                training_cash_flows.append(0)
-                training_months.append(f"Month {current_month + 1} ({state_name})")
-                training_cumulative.append(running_total)
-                current_month += 1
-    
-    # Capture the end of training for branching
-    end_training_month = current_month
-    end_training_cumulative = running_total if training_cumulative else 0
-    
-    # Process Disney states
-    current_month = end_training_month
-    running_total = end_training_cumulative
-    
-    for state_idx, state_data in disney_states:
-        state_idx_str = str(state_idx)
-        state_name = state_data.get('name', f'State {state_idx}')
-        
-        # Get duration and payment info
-        if "Break" in state_name:
-            state_duration = config.get('break_duration', 2)
-            monthly_payment = 0
-        else:  # Cruise states
-            state_duration = config.get('disney_cruise_duration', 6)
-            total_payment = state_total_payments.get(state_idx_str, 0)
-            
-            # Adjust payment based on Disney allocation percentage
-            disney_pct = config.get('disney_allocation_pct', 30) / 100
-            monthly_payment = (total_payment / state_duration / disney_pct) if state_duration > 0 and disney_pct > 0 else 0
-        
-        # Skip states with no duration
-        if state_duration <= 0:
-            continue
-        
-        # Add months and cash flows
-        for i in range(state_duration):
-            disney_cash_flows.append(monthly_payment)
-            disney_months.append(f"Month {current_month + 1} ({state_name})")
-            running_total += monthly_payment
-            disney_cumulative.append(running_total)
-            current_month += 1
-    
-    # Reset for Costa path
-    current_month = end_training_month
-    running_total = end_training_cumulative
-    
-    for state_idx, state_data in costa_states:
-        state_idx_str = str(state_idx)
-        state_name = state_data.get('name', f'State {state_idx}')
-        
-        # Get duration and payment info
-        if "Break" in state_name:
-            state_duration = config.get('break_duration', 2)
-            monthly_payment = 0
-        else:  # Cruise states
-            state_duration = config.get('costa_cruise_duration', 7)
-            total_payment = state_total_payments.get(state_idx_str, 0)
-            
-            # Adjust payment based on Costa allocation percentage
-            costa_pct = config.get('costa_allocation_pct', 70) / 100
-            monthly_payment = (total_payment / state_duration / costa_pct) if state_duration > 0 and costa_pct > 0 else 0
-        
-        # Skip states with no duration
-        if state_duration <= 0:
-            continue
-        
-        # Add months and cash flows
-        for i in range(state_duration):
-            costa_cash_flows.append(monthly_payment)
-            costa_months.append(f"Month {current_month + 1} ({state_name})")
-            running_total += monthly_payment
-            costa_cumulative.append(running_total)
-            current_month += 1
-    
-    # Combine the training path with both provider paths for visualization
-    training_trace = go.Bar(
-        name="Training Path",
-        x=training_months,
-        y=training_cash_flows,
-        marker_color='#9E9E9E',  # Grey
-        offsetgroup=0
-    )
-    
-    training_cumulative_trace = go.Scatter(
-        name="Training Cumulative",
-        x=training_months,
-        y=training_cumulative,
-        mode='lines+markers',
-        line=dict(color='#000000', width=2),  # Black
-        yaxis='y2',
-        showlegend=False
-    )
-    
-    disney_trace = go.Bar(
-        name="Disney Path (30%)",
-        x=disney_months,
-        y=disney_cash_flows,
-        marker_color='#2196F3',  # Blue
-        offsetgroup=1
-    )
-    
-    disney_cumulative_trace = go.Scatter(
-        name="Disney Cumulative",
-        x=disney_months,
-        y=disney_cumulative,
-        mode='lines+markers',
-        line=dict(color='#0D47A1', width=2),  # Dark blue
-        yaxis='y2'
-    )
-    
-    costa_trace = go.Bar(
-        name="Costa Path (70%)",
-        x=costa_months,
-        y=costa_cash_flows,
-        marker_color='#4CAF50',  # Green
-        offsetgroup=2
-    )
-    
-    costa_cumulative_trace = go.Scatter(
-        name="Costa Cumulative",
-        x=costa_months,
-        y=costa_cumulative,
-        mode='lines+markers',
-        line=dict(color='#1B5E20', width=2),  # Dark green
-        yaxis='y2'
-    )
-    
-    # Create the figure with all traces
-    cash_flow_fig = go.Figure(data=[
-        training_trace, training_cumulative_trace,
-        disney_trace, disney_cumulative_trace,
-        costa_trace, costa_cumulative_trace
-    ])
-    
-    # Add line separating training from provider paths
-    if end_training_month > 0:
-        last_training_x = training_months[-1] if training_months else "Month 1"
-        cash_flow_fig.add_vline(
-            x=end_training_month - 0.5,
-            line=dict(color="black", width=2, dash="dash"),
-            annotation_text="Provider Assignment (30% Disney, 70% Costa)",
-            annotation_position="top"
-        )
-    
-    cash_flow_fig.update_layout(
-        title='Career Path Cash Flows (Training → Provider Assignment)',
-        barmode='group',
-        xaxis=dict(
-            title='Month',
-            tickangle=45,
-            showticklabels=True
-        ),
-        yaxis=dict(
-            title='Monthly Cash Flow ($)'
-        ),
-        yaxis2=dict(
-            title='Cumulative Cash Flow ($)',
-            overlaying='y',
-            side='right'
-        ),
-        legend_title="Career Paths",
-        template='plotly_white',
-        height=600,
-        margin=dict(b=100)
-    )
-    
-    # Calculate overall IRR
-    # Need to combine the weighted average of both paths
-    disney_pct = config.get('disney_allocation_pct', 30) / 100
-    costa_pct = config.get('costa_allocation_pct', 70) / 100
-    
-    # Create weighted cash flows
-    combined_cash_flows = training_cash_flows.copy()
-    
-    # Add weighted Disney and Costa cash flows
-    max_provider_length = max(len(disney_cash_flows), len(costa_cash_flows))
-    for i in range(max_provider_length):
-        disney_cf = disney_cash_flows[i] if i < len(disney_cash_flows) else 0
-        costa_cf = costa_cash_flows[i] if i < len(costa_cash_flows) else 0
-        weighted_cf = (disney_cf * disney_pct) + (costa_cf * costa_pct)
-        combined_cash_flows.append(weighted_cf)
-    
-    # Calculate IRR
-    irr = None
-    try:
-        if combined_cash_flows and any(cf < 0 for cf in combined_cash_flows) and any(cf > 0 for cf in combined_cash_flows):
-            monthly_irr = npf.irr(np.array(combined_cash_flows))
-            irr = ((1 + monthly_irr) ** 12 - 1) * 100  # Convert to annual percentage
-    except Exception as e:
-        print(f"IRR calculation error: {str(e)}")
-    
-    # Create data for the monthly cash flow table
-    table_data = []
-    
-    # Add training data
-    for i, (month, cf, cum) in enumerate(zip(training_months, training_cash_flows, training_cumulative)):
-        table_data.append({
-            'Month': month,
-            'Path': 'Training',
-            'Cash Flow': cf,
-            'Cumulative': cum
-        })
-    
-    # Add Disney data
-    for i, (month, cf, cum) in enumerate(zip(disney_months, disney_cash_flows, disney_cumulative)):
-        table_data.append({
-            'Month': month,
-            'Path': 'Disney (30%)',
-            'Cash Flow': cf,
-            'Cumulative': cum
-        })
-    
-    # Add Costa data
-    for i, (month, cf, cum) in enumerate(zip(costa_months, costa_cash_flows, costa_cumulative)):
-        table_data.append({
-            'Month': month,
-            'Path': 'Costa (70%)',
-            'Cash Flow': cf,
-            'Cumulative': cum
-        })
-    
-    # Sort by Month and Path
-    table_data = sorted(table_data, key=lambda x: (int(x['Month'].split(' ')[1]), x['Path']))
-    
-    # Create the monthly cash flow table
-    monthly_cashflow_table = dash_table.DataTable(
-        id='monthly-cashflow-table',
-        data=table_data,
-        columns=[
-            {"name": "Month", "id": "Month"},
-            {"name": "Career Path", "id": "Path"},
-            {"name": "Cash Flow", "id": "Cash Flow", "type": "numeric", "format": {"specifier": "$,.2f"}},
-            {"name": "Cumulative Cash Flow", "id": "Cumulative", "type": "numeric", "format": {"specifier": "$,.2f"}}
-        ],
-        style_cell={'textAlign': 'center', 'padding': '10px'},
-        style_header={
-            'backgroundColor': 'rgb(230, 230, 230)',
-            'fontWeight': 'bold'
-        },
-        style_data_conditional=[
-            {
-                'if': {'row_index': 'odd'},
-                'backgroundColor': 'rgb(248, 248, 248)'
-            },
-            {
-                'if': {'filter_query': '{Cash Flow} < 0'},
-                'color': 'red'
-            },
-            {
-                'if': {'filter_query': '{Cash Flow} > 0'},
-                'color': 'green'
-            },
-            {
-                'if': {'filter_query': '{Path} = "Disney (30%)"'},
-                'backgroundColor': 'rgba(33, 150, 243, 0.1)'
-            },
-            {
-                'if': {'filter_query': '{Path} = "Costa (70%)"'},
-                'backgroundColor': 'rgba(76, 175, 80, 0.1)'
-            },
-            {
-                'if': {'filter_query': '{Path} = "Training"'},
-                'backgroundColor': 'rgba(158, 158, 158, 0.1)'
-            }
-        ],
-        page_size=15,
-        style_table={'overflowX': 'auto'}
-    )
-    
-    return html.Div([
-        html.H4("Monthly Cash Flow Analysis", style={'textAlign': 'center', 'marginBottom': '20px'}),
-        
-        # Provider explanation
-        provider_explanation,
-        
-        # IRR Summary
-        html.Div([
-            html.H5("Internal Rate of Return (IRR)", style={'textAlign': 'center', 'marginBottom': '10px'}),
-            html.Div([
-                html.P("Annual IRR (weighted average of both paths):", style={'fontWeight': 'bold', 'display': 'inline-block', 'marginRight': '10px'}),
-                html.P(f"{irr:.1f}%" if irr is not None else "N/A",
-                      style={'display': 'inline-block', 'color': 'green' if irr and irr > 0 else 'red'})
-            ], style={'textAlign': 'center', 'marginBottom': '20px'})
-        ], style={'backgroundColor': '#f1f1f1', 'padding': '15px', 'borderRadius': '5px', 'marginBottom': '20px'}),
-        
-        # Cash Flow Chart
-        html.Div([
-            html.H5("Cash Flow by Provider Path", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            dcc.Graph(figure=cash_flow_fig, style={'marginBottom': '30px'})
-        ]),
-        
-        # Monthly Cash Flow Table
-        html.Div([
-            html.H5("Monthly Cash Flow Details", style={'textAlign': 'center', 'marginBottom': '15px'}),
-            html.P([
-                "This table shows the monthly cash flows for the training path and each provider path (Disney and Costa). ",
-                "Note that students follow either the Disney path (30%) or the Costa path (70%) after training, not both."
-            ], style={'marginBottom': '15px'}),
-            monthly_cashflow_table
         ])
     ])
 

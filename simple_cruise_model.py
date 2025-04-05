@@ -81,12 +81,9 @@ class CruiseCareerSequence:
         else:
             self.selected_provider = "Costa"
         
-        # Skip to the first state for this provider
-        # We need to find the index of the first cruise state for this provider
-        for i, state in enumerate(self.state_configs):
-            if state.provider == self.selected_provider and "Cruise 1" in state.name:
-                self.current_state_index = i
-                break
+        # Keep the current state index as is - we'll handle state transitions in advance_state
+        # This ensures we don't skip any states and properly follow the sequence
+        # The advance_state method will handle moving to the appropriate provider's states
 
     def _calculate_state_salary(self) -> float:
         """Calculate salary for the entire state based on current state"""
@@ -118,75 +115,73 @@ class CruiseCareerSequence:
 
     def advance_state(self) -> Dict[str, Any]:
         """Advance to the next state and return state results"""
-        if self.dropout or self.completed:
-            return self._get_state_summary()
-
-        # Calculate payment for the current state
-        state_payment = 0.0
-        if self.current_state_index < self.num_states:
-            config = self.state_configs[self.current_state_index]
-            # Only calculate payment for cruise states
-            if "Cruise" in config.name and not "Break" in config.name:
-                state_payment = self.current_state_salary * config.payment_fraction
-        
-        # Add payment to total
-        self.total_payments += state_payment
-        
-        # Track history
-        self.state_salaries.append(self.current_state_salary)
-        self.state_payments.append(state_payment)
-        
-        # Store the current state index before completing it
-        current_index = self.current_state_index
-        
-        # Complete the current state and move to the next
-        self.completed_states.append(self.current_state_index)
-        
-        # Advance to next state, but only if it belongs to the same provider or it's early training
-        next_index = self.current_state_index + 1
-        if next_index < self.num_states:
-            next_config = self.state_configs[next_index]
-            current_config = self.state_configs[self.current_state_index]
-            
-            # If we're still in training, move to the next state
-            if not self.selected_provider:
-                self.current_state_index = next_index
-            # If we have a provider, only move to states for that provider
-            elif next_config.provider == self.selected_provider or next_config.provider == "":
-                self.current_state_index = next_index
-            # Otherwise, find the next state for this provider
-            else:
-                found_next = False
-                for i in range(next_index, self.num_states):
-                    if self.state_configs[i].provider == self.selected_provider:
-                        self.current_state_index = i
-                        found_next = True
-                        break
-                # If no next state found, we're done
-                if not found_next:
-                    self.completed = True
-        else:
-            # No more states
-            self.completed = True
-            
-        self._enter_new_state()
-        
-        # Create a summary based on the state we just completed
-        return {
-            'state_index': current_index,
-            'state_name': self.state_configs[current_index].name if current_index < self.num_states else f"State {current_index}",
-            'state_duration': self.state_configs[current_index].duration_months if current_index < self.num_states else 0,
-            'current_state_salary': self.current_state_salary if not "Break" in self.state_configs[current_index].name else 0.0,
-            'state_payment': state_payment,
-            'payment_fraction': self.state_configs[current_index].payment_fraction if current_index < self.num_states else 0,
-            'total_training_costs': self.total_training_costs,
-            'total_payments': self.total_payments,
-            'net_cash_flow': self.total_payments - self.total_training_costs,
-            'dropout': self.dropout,
-            'completed': self.completed,
-            'completed_states': self.completed_states.copy(),
-            'provider': self.selected_provider
+        # Record state results before advancing
+        result = {
+            'state_name': self.state_configs[self.current_state_index].name,
+            'state_payment': self._calculate_state_payment(),
+            'current_state_salary': self.current_state_salary,
+            'provider': self.state_configs[self.current_state_index].provider
         }
+        
+        # Add current state to completed states if not dropped out
+        if not self.dropout:
+            self.completed_states.append(self.current_state_index)
+            
+            # Record financial metrics for this state
+            self.state_salaries.append(self.current_state_salary)
+            self.state_payments.append(result['state_payment'])
+            self.total_payments += result['state_payment']
+        
+        # Move to next state if not completed or dropped out
+        if not self.completed and not self.dropout:
+            next_index = self.current_state_index + 1
+            
+            if next_index < self.num_states:
+                next_config = self.state_configs[next_index]
+                current_config = self.state_configs[self.current_state_index]
+                
+                # If we're still in training or common states, move to the next state
+                if not self.selected_provider or next_config.provider == "":
+                    self.current_state_index = next_index
+                # If we have a provider, find the next appropriate state
+                elif self.selected_provider:
+                    # Find the next state for this provider
+                    found_next = False
+                    for i in range(next_index, self.num_states):
+                        state_config = self.state_configs[i]
+                        # Accept states that are either for this provider or common states (no provider)
+                        if state_config.provider == self.selected_provider or state_config.provider == "":
+                            self.current_state_index = i
+                            found_next = True
+                            break
+                    # If no next state found, we're done
+                    if not found_next:
+                        self.completed = True
+            else:
+                # No more states
+                self.completed = True
+            
+            self._enter_new_state()
+        
+        return result
+
+    def _calculate_state_payment(self) -> float:
+        """Calculate payment for the current state based on current state"""
+        if self.current_state_index >= self.num_states:
+            return 0.0
+            
+        config = self.state_configs[self.current_state_index]
+        
+        # No payment during training states or breaks
+        if "Training" in config.name or "Transportation and placement" in config.name or "Break" in config.name:
+            return 0.0
+            
+        # For cruise states, use the configured payment fraction
+        if "Cruise" in config.name:
+            return self.current_state_salary * config.payment_fraction
+            
+        # Default case
+        return 0.0
 
     def _get_state_summary(self) -> Dict[str, Any]:
         """Return summary of current status"""
@@ -636,39 +631,34 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
     """Run a batch of simulations with the given configuration
     
     Args:
-        config: SimulationConfig object containing simulation parameters
-        
-    Returns:
-        Dictionary containing analysis results
+        config: SimulationConfig to use for simulation
     """
-    all_results = []
     state_configs = config.create_state_configs()
     num_states = len(state_configs)
+    num_simulations = config.num_students
     
-    # Print state config debug info
-    print("\nDEBUG - State Configuration:")
-    for i, state in enumerate(state_configs):
-        print(f"State {i} ({state.name}): payment_fraction={state.payment_fraction}, base_salary={state.base_salary}, provider={state.provider}")
-    
-    # Initialize state-specific tracking
+    # Track state-level metrics
     state_salary_sums = {i: 0.0 for i in range(num_states)}
-    state_salary_counts = {i: 0 for i in range(num_states)} # Track states with salary > 0
-    state_count = {i: 0 for i in range(num_states)}
+    state_salary_counts = {i: 0 for i in range(num_states)}
     state_total_costs = {i: 0.0 for i in range(num_states)}
     state_total_payments = {i: 0.0 for i in range(num_states)}
-    state_entry_counts = {i: 0 for i in range(num_states)} # Track how many simulations entered each state
+    state_entry_counts = {i: 0 for i in range(num_states)}
+    state_count = {i: 0 for i in range(num_states)}
     
-    # Provider tracking
-    provider_counts = {"Disney": 0, "Costa": 0, None: 0}
+    # Track provider-specific metrics
+    provider_metrics = {
+        'Disney': {'count': 0, 'total_training_costs': 0, 'total_payments': 0},
+        'Costa': {'count': 0, 'total_training_costs': 0, 'total_payments': 0}
+    }
+    provider_counts = {'Disney': 0, 'Costa': 0}
     
-    # Add debug counters for payment tracking
-    debug_payment_counts = {i: 0 for i in range(num_states)}
-    debug_payment_sums = {i: 0.0 for i in range(num_states)}
+    # Track provider assignments per state
+    state_provider_counts = {i: {'Disney': 0, 'Costa': 0} for i in range(num_states)}
     
-    for i in range(config.num_students):
-        # Use student index as seed if no random seed provided
-        seed = config.random_seed + i if config.random_seed is not None else i
-        
+    # Run all simulations
+    all_results = []
+    for i in range(num_simulations):
+        seed = i if config.random_seed is None else config.random_seed + i
         result = run_simulation(
             state_configs=state_configs,
             random_seed=seed,
@@ -676,78 +666,58 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         )
         all_results.append(result)
         
-        # Track selected provider
+        # Track provider selection
         provider = result.get('selected_provider')
-        provider_counts[provider] = provider_counts.get(provider, 0) + 1
+        if provider:
+            provider_counts[provider] = provider_counts.get(provider, 0) + 1
+            provider_metrics[provider]['count'] += 1
+            provider_metrics[provider]['total_training_costs'] += result['total_training_costs']
+            provider_metrics[provider]['total_payments'] += result['total_payments']
         
-        # Debug output for first few simulations
-        if i < 3:  # Print debug info for first 3 students
-            print(f"\nDEBUG - Student {i} Payment Details (Provider: {provider}):")
-            for j, state in enumerate(result['state_results']):
-                state_idx = state['state_index']
-                if state_idx < num_states:
-                    payment_fraction = state.get('payment_fraction', 0)
-                    print(f"State {j}: Index {state_idx} ({state_configs[state_idx].name}), " +
-                          f"State Salary: ${state['current_state_salary']:.2f}, " +
-                          f"Payment: ${state['state_payment']:.2f}, " +
-                          f"Fraction: {payment_fraction:.2f}")
-        
-        # Track state-specific metrics
-        for state_result in result['state_results']:
-            state_idx = state_result['state_index']
-            if state_idx < num_states:  # Ensure valid state
-                # Track salary data
-                state_salary = state_result['current_state_salary']
-                state_salary_sums[state_idx] += state_salary
-                state_count[state_idx] += 1
-                if state_salary > 0:
-                    state_salary_counts[state_idx] += 1
-                
-                # Track payment data - this is the key part
-                state_payment = state_result['state_payment']
-                state_total_payments[state_idx] += state_payment
-                
-                # Debug counters
-                if state_payment > 0:
-                    debug_payment_counts[state_idx] += 1
-                    debug_payment_sums[state_idx] += state_payment
-    
-    # Print provider distribution
-    total_students = sum(provider_counts.values())
-    print("\nProvider Distribution:")
-    for provider, count in provider_counts.items():
-        if provider:  # Skip None provider
-            percent = (count / total_students) * 100
-            print(f"{provider}: {count} students ({percent:.1f}%)")
-    
-    # Print debug payment info
-    print("\nDEBUG - Payment Tracking:")
-    for i in range(num_states):
-        if debug_payment_counts[i] > 0:
-            avg = debug_payment_sums[i] / debug_payment_counts[i]
-            print(f"State {i} ({state_configs[i].name}): " +
-                  f"States with payments: {debug_payment_counts[i]}, " +
-                  f"Total payments: ${debug_payment_sums[i]:.2f}, " +
-                  f"Avg payment: ${avg:.2f}")
-        else:
-            print(f"State {i} ({state_configs[i].name}): No payments recorded")
-
-    # Refined entry count logic: count if state appears in state results at all
-    state_entry_counts = {i: 0 for i in range(num_states)}
-    for r in all_results:
-        unique_states_entered = set(sr['state_index'] for sr in r['state_results'] if sr['state_index'] < num_states)
-        for state_idx in unique_states_entered:
-            state_entry_counts[state_idx] += 1
+        # Track state-level metrics and provider assignments
+        for state_idx, state_result in enumerate(result['state_results']):
+            state_entry_counts[state_idx] = state_entry_counts.get(state_idx, 0) + 1
             
-    # Recalculate total costs based *only* on simulations that entered the state
-    state_total_costs = {i: 0.0 for i in range(num_states)}
-    for r in all_results:
-        unique_states_entered = set(sr['state_index'] for sr in r['state_results'] if sr['state_index'] < num_states)
-        for state_idx, cost in enumerate(r['training_costs_by_state']):
-            if state_idx < num_states and state_idx in unique_states_entered: # Check if the state was actually entered in this sim
-                 state_total_costs[state_idx] += cost
-                 
-    # Calculate average salaries and payment metrics by state
+            # Track costs and payments
+            if state_idx < num_states:
+                state_total_costs[state_idx] += state_configs[state_idx].training_cost
+                state_total_payments[state_idx] += state_result.get('state_payment', 0)
+            
+            # Track salary metrics if this is a salary-earning state
+            salary = state_result.get('current_state_salary', 0)
+            if salary > 0:
+                state_salary_sums[state_idx] = state_salary_sums.get(state_idx, 0) + salary
+                state_salary_counts[state_idx] = state_salary_counts.get(state_idx, 0) + 1
+            
+            # Track provider assignments per state
+            if provider and state_idx < num_states:
+                if not state_result.get('dropout', False):  # Only count if not dropped out
+                    if "Disney" in state_configs[state_idx].name:
+                        state_provider_counts[state_idx]['Disney'] += 1
+                    elif "Costa" in state_configs[state_idx].name:
+                        state_provider_counts[state_idx]['Costa'] += 1
+            
+            state_count[state_idx] = state_count.get(state_idx, 0) + 1
+    
+    # Calculate provider-specific metrics
+    for provider in provider_metrics:
+        count = provider_metrics[provider]['count']
+        if count > 0:
+            provider_metrics[provider]['avg_training_cost'] = provider_metrics[provider]['total_training_costs'] / count
+            provider_metrics[provider]['avg_total_payments'] = provider_metrics[provider]['total_payments'] / count
+            provider_metrics[provider]['avg_net_cash_flow'] = (
+                provider_metrics[provider]['avg_total_payments'] - 
+                provider_metrics[provider]['avg_training_cost']
+            )
+            provider_metrics[provider]['avg_roi'] = (
+                (provider_metrics[provider]['avg_total_payments'] - 
+                 provider_metrics[provider]['avg_training_cost']) / 
+                provider_metrics[provider]['avg_training_cost'] * 100
+                if provider_metrics[provider]['avg_training_cost'] > 0 else 0
+            )
+            provider_metrics[provider]['roi_std'] = 0  # TODO: Calculate actual std dev
+    
+    # Calculate state-level metrics
     state_metrics = {}
     for state_idx in range(num_states):
         num_salary_states = state_salary_counts[state_idx]
@@ -773,9 +743,11 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
             'provider': state_configs[state_idx].provider if hasattr(state_configs[state_idx], 'provider') else "",
             'avg_state_salary': avg_state_salary,
             'avg_payment': avg_payment,
-            'expected_payment': expected_payment, # Add this for debugging
+            'expected_payment': expected_payment,
             'state_count': state_count[state_idx],
-            'salary_count': num_salary_states
+            'salary_count': num_salary_states,
+            'disney_count': state_provider_counts[state_idx]['Disney'],
+            'costa_count': state_provider_counts[state_idx]['Costa']
         }
     
     # Convert results to DataFrame for analysis
@@ -788,43 +760,29 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
             'total_payments': r['total_payments'],
             'net_cash_flow': r['net_cash_flow'],
             'final_state_index': r['final_state_index'],
-            'monthly_irr': calculate_monthly_irr(r),  # Calculate monthly IRR for each simulation
+            'monthly_irr': calculate_monthly_irr(r),
             'provider': r.get('selected_provider')
         }
         for r in all_results
     ])
     
-    # Calculate key metrics
-    roi = df['net_cash_flow'] / df['total_training_costs']
+    # Calculate ROI for each simulation
+    roi = (df['total_payments'] - df['total_training_costs']) / df['total_training_costs'].replace(0, np.nan)
     
-    # Calculate average monthly-based IRR, handling None values
-    monthly_irr_values = [val for val in df['monthly_irr'] if val is not None]
-    avg_monthly_irr = sum(monthly_irr_values) / len(monthly_irr_values) if monthly_irr_values else None
+    # Calculate average monthly IRR (excluding None values)
+    valid_irr = df['monthly_irr'].dropna()
+    avg_monthly_irr = valid_irr.mean() if not valid_irr.empty else None
     
-    # Calculate provider-specific metrics
-    provider_metrics = {}
-    for provider in ['Disney', 'Costa']:
-        provider_df = df[df['provider'] == provider]
-        if len(provider_df) > 0:
-            provider_roi = provider_df['net_cash_flow'] / provider_df['total_training_costs']
-            provider_metrics[provider] = {
-                'count': len(provider_df),
-                'avg_training_cost': provider_df['total_training_costs'].mean(),
-                'avg_total_payments': provider_df['total_payments'].mean(),
-                'avg_net_cash_flow': provider_df['net_cash_flow'].mean(),
-                'avg_roi': provider_roi.mean() * 100,
-                'roi_std': provider_roi.std() * 100
-            }
-    
-    # Print state total payments for debugging
-    print("\nDEBUG - Final State Total Payments:")
-    for i in range(num_states):
-        state_name = state_configs[i].name if i < len(state_configs) else f"State {i}"
-        print(f"State {i} ({state_name}): Total payments = ${state_total_payments.get(i, 0):.2f}")
+    # Calculate completion and dropout rates correctly
+    total_simulations = len(df)
+    completed_count = df['completed'].sum()
+    dropout_count = df['dropout'].sum()
+    completion_rate = (completed_count / total_simulations) * 100
+    dropout_rate = (dropout_count / total_simulations) * 100
     
     return {
-        'completion_rate': df['completed'].mean() * 100,
-        'dropout_rate': df['dropout'].mean() * 100,
+        'completion_rate': completion_rate,
+        'dropout_rate': dropout_rate,
         'avg_duration_states': df['duration_states'].mean(),
         'avg_training_cost': df['total_training_costs'].mean(),
         'avg_total_payments': df['total_payments'].mean(),
@@ -833,8 +791,8 @@ def run_simulation_batch(config: SimulationConfig) -> Dict:
         'roi_std': roi.std() * 100,
         'roi_10th': roi.quantile(0.1) * 100,
         'roi_90th': roi.quantile(0.9) * 100,
-        'avg_annual_irr': df['monthly_irr'].mean(),  # Simple mean (may be None)
-        'avg_monthly_irr': avg_monthly_irr,  # Properly calculated average of non-None values
+        'avg_annual_irr': df['monthly_irr'].mean(),
+        'avg_monthly_irr': avg_monthly_irr,
         'state_distribution': df['final_state_index'].value_counts().sort_index().to_dict(),
         'state_metrics': state_metrics,
         'state_total_costs': state_total_costs,

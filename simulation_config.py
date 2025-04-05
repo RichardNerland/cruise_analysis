@@ -52,7 +52,7 @@ class SimulationConfig:
     disney_second_cruise_salary: float = 5400
     disney_third_cruise_salary: float = 18000
     disney_cruise_duration: int = 6
-    disney_cruise_dropout_rate: float = 0.03
+    disney_cruise_dropout_rate: float = 0.0
     disney_cruise_salary_variation: float = 5.0
     disney_cruise_payment_fraction: float = 0.14
     
@@ -61,7 +61,7 @@ class SimulationConfig:
     costa_second_cruise_salary: float = 5850
     costa_third_cruise_salary: float = 9000
     costa_cruise_duration: int = 7
-    costa_cruise_dropout_rate: float = 0.03
+    costa_cruise_dropout_rate: float = 0.0
     costa_cruise_salary_variation: float = 5.0
     costa_cruise_payment_fraction: float = 0.14
     
@@ -166,36 +166,38 @@ class SimulationConfig:
         """Helper method to create cruise states for a specific provider"""
         states = []
         
-        for i, salary in enumerate(salaries[:self.num_cruises]):
-            cruise_number = i + 1
+        # Create states for each cruise
+        for i in range(self.num_cruises):
+            # For cruises beyond the third, use the third cruise's salary
+            salary = salaries[min(i, 2)]  # Use index 2 (third cruise) for any cruise beyond 3
             
-            # Add the cruise
+            # Create the cruise state
             states.append(
                 StateConfig(
                     training_cost=0,
                     dropout_rate=dropout_rate,
                     base_salary=salary,
-                    salary_increase_pct=0,  # Not using percentage increase anymore
+                    salary_increase_pct=0,
                     salary_variation_pct=salary_variation,
                     duration_months=duration,
                     payment_fraction=payment_fraction,
-                    name=f"{provider} Cruise {cruise_number}",
+                    name=f"{provider} Cruise {i+1}",
                     provider=provider
                 )
             )
             
-            # Add break after cruise if breaks are enabled and it's not the last cruise
-            if self.include_breaks and i < len(salaries) - 1:
+            # Add a break state after each cruise except the last one
+            if i < self.num_cruises - 1 and self.include_breaks:
                 states.append(
                     StateConfig(
                         training_cost=0,
                         dropout_rate=self.break_dropout_rate,
-                        base_salary=0,  # No salary during breaks
+                        base_salary=0,
                         salary_increase_pct=0,
                         salary_variation_pct=0,
                         duration_months=self.break_duration,
-                        payment_fraction=0,  # No payments during breaks
-                        name=f"{provider} Break {cruise_number}",
+                        payment_fraction=0,
+                        name=f"Break {i+1}",
                         provider=provider
                     )
                 )
@@ -203,7 +205,10 @@ class SimulationConfig:
         return states
 
 # Default simulation configuration with the new cruise provider model
-DEFAULT_CONFIG = SimulationConfig()
+DEFAULT_CONFIG = SimulationConfig(
+    disney_cruise_dropout_rate=0.0,  # Changed from 0.03 to 0
+    costa_cruise_dropout_rate=0.0    # Changed from 0.03 to 0
+)
 
 # Baseline configuration - updated with provider-specific cruise details
 BASELINE_CONFIG = SimulationConfig(
@@ -225,10 +230,12 @@ BASELINE_CONFIG = SimulationConfig(
     disney_second_cruise_salary=5400,
     disney_third_cruise_salary=18000,
     disney_cruise_duration=6,
+    disney_cruise_dropout_rate=0.0,  # Changed from 0.03 to 0
     costa_first_cruise_salary=5100,
     costa_second_cruise_salary=5850,
     costa_third_cruise_salary=9000,
     costa_cruise_duration=7,
+    costa_cruise_dropout_rate=0.0,   # Changed from 0.03 to 0
     include_breaks=True,
     break_duration=2,
     num_cruises=3
@@ -254,12 +261,12 @@ OPTIMISTIC_CONFIG = SimulationConfig(
     disney_second_cruise_salary=5500,  # Slightly higher
     disney_third_cruise_salary=18500,  # Slightly higher
     disney_cruise_duration=6,
-    disney_cruise_dropout_rate=0.02,  # Lower dropout rate
+    disney_cruise_dropout_rate=0.0,  # Changed from 0.02 to 0
     costa_first_cruise_salary=5100,
     costa_second_cruise_salary=5900,  # Slightly higher
     costa_third_cruise_salary=9200,   # Slightly higher
     costa_cruise_duration=7,
-    costa_cruise_dropout_rate=0.02,   # Lower dropout rate
+    costa_cruise_dropout_rate=0.0,   # Changed from 0.02 to 0
     include_breaks=True,
     break_duration=2,
     num_cruises=3
@@ -285,12 +292,12 @@ PESSIMISTIC_CONFIG = SimulationConfig(
     disney_second_cruise_salary=5300,  # Slightly lower
     disney_third_cruise_salary=17500,  # Slightly lower
     disney_cruise_duration=6,
-    disney_cruise_dropout_rate=0.04,  # Higher dropout rate
+    disney_cruise_dropout_rate=0.0,  # Changed from 0.04 to 0
     costa_first_cruise_salary=5000,   # Slightly lower
     costa_second_cruise_salary=5750,  # Slightly lower
     costa_third_cruise_salary=8800,   # Slightly lower
     costa_cruise_duration=7,
-    costa_cruise_dropout_rate=0.04,   # Higher dropout rate
+    costa_cruise_dropout_rate=0.0,   # Changed from 0.04 to 0
     include_breaks=True,
     break_duration=2,
     num_cruises=3
